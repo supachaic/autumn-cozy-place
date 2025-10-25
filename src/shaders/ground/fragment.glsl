@@ -14,13 +14,13 @@ void main() {
   // Grass
   float grassThreshold = -2.0;
   float grassMix = step(grassThreshold, vPosition.y);
-  vec3 grassColor = mix(uGrassColor2, uGrassColor1, vTone);
+  vec3 grassColor = mix(uGrassColor1, uGrassColor2, vTone);
   color = mix(color, grassColor, grassMix);
 
   // Ground
   float groundThreshold = -0.2;
   float groundMix = smoothstep(0.05, groundThreshold, vPosition.y);
-  vec3 groundColor = mix(uGroundColor2, uGroundColor1, vTone);
+  vec3 groundColor = mix(uGroundColor1, uGroundColor2, vTone);
   color = mix(color, groundColor, groundMix);
 
   csm_DiffuseColor = vec4(color, 1.0);

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import CustomShaderMaterial from 'three-custom-shader-material/vanilla';
+import { Howl } from 'howler';
+
 import { App } from './app';
 import multiplyQuaternions from './utils/MultiplyQuaternion';
 import GrassBladeVertexShader from './shaders/grassBlade/vertex.glsl';
@@ -12,24 +14,52 @@ import LeavesVertexShader from './shaders/leaves/vertex.glsl';
 import LeavesFragmentShader from './shaders/leaves/fragment.glsl';
 import WaterVertexShader from './shaders/water/vertex.glsl';
 import WaterFragmentShader from './shaders/water/fragment.glsl';
+import { getImageData } from './utils/image-helper';
 
 class GrassProject extends App {
+  #uiButtonIds_ = [
+    'btn-enter',
+    'btn-maple-green',
+    'btn-maple-yellow',
+    'btn-maple-red',
+    'btn-coffee',
+    'btn-bench',
+    'btn-pond',
+    'btn-music',
+    'btn-info',
+    'btn-close-info',
+  ];
   #enableAnimation_ = true;
+  #sound_ = null;
+  #soundMuted_ = false;
 
+  #playlist_ = {
+    green: './resources/audio/chill-lofi-music-409356.mp3',
+    yellow: './resources/audio/lofi-boy-serene-strings-lofi-instrumental-278238.mp3',
+    red: './resources/audio/wave-of-you-relaxing-lofi-305565.mp3',
+  }
+
+  #grassBladeGeometry_ = null;
   #grassMaterial_ = null;
   #groundWidth_ = 30;
-  #groundTexture_ = null;
+  #noiseGrassHeightTexture_ = null;
   #groundRepeat_ = 2;
-  #groundHeightOffsetData_ = null;
-  #groundHeightWidth_ = 0;
-  #groundHeightHeight_ = 0;
+  #grassHeightData_ = null;
   #groundUV_ = new THREE.Vector2();
 
   #groundHeightData_ = null;
   #groundHeightDataWidth_ = 0;
   #groundHeightDataHeight_ = 0;
+  #noiseGroundHeightTexture_ = null;
 
-  #noiseTexture_ = null;
+  #grassColorParams_ = {
+    greenTipColor: '#b8df2a',
+    greenBaseColor: '#43731c',
+    yellowTipColor: '#d4e029',
+    yellowBaseColor: '#43731c',
+    redTipColor: '#dcdf2a',
+    redBaseColor: '#54731c',
+  }
 
   #waterParams_ = {
     color: '#0abae6',
@@ -46,12 +76,13 @@ class GrassProject extends App {
     grassColor2: '#43731c',
     groundColor1: '#df8f43',
     groundColor2: '#965b17',
-    mountainColor1: '#5fb125',
-    mountainColor2: '#335e17',
   }
 
   #foliageMaterial_ = null;
+  #foliageUniforms_ = null;
 
+  #leafColor_ = 'yellow'; // green, yellow, red
+  #leafTexture_ = null;
   #leafMaterial_ = null;
   #leafMesh_ = null;
   #leafUniforms_ = null;
@@ -66,8 +97,10 @@ class GrassProject extends App {
     windDirection: new THREE.Vector3(1, 0, 0.75).normalize(),
 
     // leaf colors
-    leafGreenLight: '#33FF33',
-    leafGreenDark: '#006600',
+    // leafGreenLight: '#33FF33',
+    // leafGreenDark: '#006600',
+    leafGreenLight: '#b8df2a',
+    leafGreenDark: '#43731c',
     leafYellowLight: '#FFE300',
     leafYellowDark: '#FF5B00',
     leafRedLight: '#FF5C33',
@@ -82,11 +115,24 @@ class GrassProject extends App {
     await this.#setupEnvironment(gui);
     await this.#loadTexture_();
 
+    await this.#sceneModel_(gui);
+
     await this.#ground_(gui);
     await this.#grassBlades_(gui);
-    await this.#sceneModel_(gui);
     await this.#fallenLeaves_(gui);
     await this.#pond_(gui);
+
+    await this.#initSound_();
+  }
+
+  async #initSound_() {
+    this.#sound_ = new Howl({
+      src: [this.#playlist_[this.#leafColor_]],
+      autoplay: false,
+      loop: true,
+      volume: 0,
+      muted: this.#soundMuted_,
+    });
   }
 
   async #setupEnvironment(gui) {
@@ -104,7 +150,7 @@ class GrassProject extends App {
     this.Scene.background = skybox;
 
     // add sun light
-    const sunLight = new THREE.DirectionalLight(0xffffff, 1);
+    const sunLight = new THREE.DirectionalLight(0xffffff, 3);
     sunLight.position.set(5, 10, 5);
     sunLight.castShadow = true;
     sunLight.shadow.radius = 3;
@@ -121,17 +167,22 @@ class GrassProject extends App {
   }
 
   async #loadTexture_() {
-    this.#groundTexture_ = await this.loadTexture('/resources/textures/Grass_Height4.png');
-    this.#groundTexture_.wrapS = this.#groundTexture_.wrapT = THREE.RepeatWrapping;
-    this.#groundTexture_.colorSpace = THREE.SRGBColorSpace;
-    this.#groundTexture_.flipY = false;
-    this.#prepareGroundHeightOffsetData_();
+    this.#noiseGrassHeightTexture_ = await this.loadTexture('/resources/textures/noise-grass-height3.png');
+    this.#noiseGrassHeightTexture_.wrapS = this.#noiseGrassHeightTexture_.wrapT = THREE.RepeatWrapping;
+    this.#noiseGrassHeightTexture_.colorSpace = THREE.SRGBColorSpace;
+    this.#noiseGrassHeightTexture_.flipY = false; // grass height texture is not flipped
+    this.#prepareGrassHeightData_();
 
-    this.#noiseTexture_ = await this.loadTexture('/resources/textures/noise-texture-with-pond.png');
-    this.#noiseTexture_.wrapS = this.#noiseTexture_.wrapT = THREE.RepeatWrapping;
-    this.#noiseTexture_.colorSpace = THREE.SRGBColorSpace;
-    this.#noiseTexture_.flipY = true;
+    this.#noiseGroundHeightTexture_ = await this.loadTexture('/resources/textures/noise-ground-height.png');
+    this.#noiseGroundHeightTexture_.wrapS = this.#noiseGroundHeightTexture_.wrapT = THREE.RepeatWrapping;
+    this.#noiseGroundHeightTexture_.colorSpace = THREE.SRGBColorSpace;
+    this.#noiseGroundHeightTexture_.flipY = true; // ground noise texture is flipped
     this.#prepareGroundHeightData_();
+
+    this.#leafTexture_ = await this.loadTexture('/resources/textures/leaf.png');
+    this.#leafTexture_.encoding = THREE.sRGBEncoding;
+    this.#leafTexture_.anisotropy = this.Renderer.capabilities.getMaxAnisotropy();
+    this.#leafTexture_.flipY = false;
   }
 
   async #sceneModel_(gui) {
@@ -140,12 +191,13 @@ class GrassProject extends App {
 
     gltf.scene.traverse((child) => {
       if (child.isMesh) {
+        if (child.name === 'foliage' || child.name === 'grass-blade') {
+          child.visible = false;
+          return;
+        }
+
         child.castShadow = true;
         child.receiveShadow = true;
-
-        if (child.name === 'foliage') {
-          child.visible = false;
-        }
       }
     });
     this.Scene.add(gltf.scene);
@@ -153,6 +205,8 @@ class GrassProject extends App {
     const foliages = gltf.scene.getObjectByName('foliage');
     const foliageInstanced = await this.#createFoliageInstanced_(foliages, 0.34);
     this.Scene.add(foliageInstanced);
+
+    this.#grassBladeGeometry_ = gltf.scene.getObjectByName('grass-blade').geometry;
   }
 
   async #createFoliageInstanced_(model, density) {
@@ -161,7 +215,7 @@ class GrassProject extends App {
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.flipY = true;
 
-    // build sparse sample like you already do
+    // randomly remove some vertices based on density
     const maxCount = geometry.attributes.position.count;
     const removeCount = Math.floor(maxCount * (1 - density));
     const indicesToRemove = new Set();
@@ -173,7 +227,6 @@ class GrassProject extends App {
     const offsets = [];
     const norms = [];
     const phases = [];
-    // const yaws = [];
     const scales = [];
 
     for (let i = 0; i < maxCount; i++) {
@@ -182,42 +235,31 @@ class GrassProject extends App {
       offsets.push(posArr[ix], posArr[ix + 1], posArr[ix + 2]);
       norms.push(norArr[ix], norArr[ix + 1], norArr[ix + 2]);
       phases.push(Math.random() * Math.PI * 2);
-      // yaws.push(Math.random() * Math.PI * 2);
-      // slight per-leaf size variance (avoid perfect tiling)
       scales.push(0.85 + Math.random() * 0.4);
     }
 
     const count = offsets.length / 3;
 
-    // base quad (unit card). We’ll scale in shader via a per-instance aScale and uLeafSize
     const card = new THREE.PlaneGeometry(1, 1, 1, 1);
 
     // instanced attributes
     const aOffset = new THREE.InstancedBufferAttribute(new Float32Array(offsets), 3);
     const aNormal = new THREE.InstancedBufferAttribute(new Float32Array(norms), 3);
     const aPhase  = new THREE.InstancedBufferAttribute(new Float32Array(phases), 1);
-    // const aYaw   = new THREE.InstancedBufferAttribute(new Float32Array(yaws), 1);
     const aScale  = new THREE.InstancedBufferAttribute(new Float32Array(scales), 1);
 
     card.setAttribute('aOffset', aOffset);
     card.setAttribute('aNormal', aNormal);
     card.setAttribute('aPhase',  aPhase);
-    // card.setAttribute('aYaw',  aYaw);
     card.setAttribute('aScale',  aScale);
 
     // shared uniforms
-    const uniforms = {
+    this.#foliageUniforms_ = {
       uModelPosition: { value: model.position },
       uTime:         { value: 0 },
       uTexture:      { value: texture },
       uLeafColor:  { value: new THREE.Color(this.#leafParams_.leafYellowLight) },
       uDarkColor:  { value: new THREE.Color(this.#leafParams_.leafYellowDark) },
-      // uLeafColor:    { value: new THREE.Color('#33ff33') },
-      // uDarkColor:    { value: new THREE.Color('#004400') },
-      // uLeafColor:    { value: new THREE.Color('#FFE300') },
-      // uDarkColor:    { value: new THREE.Color('#FF5B00') },
-      // // uLeafColor:    { value: new THREE.Color('#ff5c33') },
-      // uDarkColor:    { value: new THREE.Color('#761800') },
       uLeafSize:     { value: 0.8 },        // world size of the card (meters)
       uWindDir:      { value: new THREE.Vector2(1, 0).normalize() },
       uWindStrength: { value: 0.5 },
@@ -225,12 +267,11 @@ class GrassProject extends App {
       uFlutterAmp:   { value: 0.015 },
       uFlutterFreq:  { value: 1.0 },
       uPhaseGlobal:  { value: Math.random() * 100.0 }, // mesh-level phase
-      // uThickness:    { value: 0.002 }, // tiny “sheet thickness” to reduce coplanar z-fighting
     };
 
     // main material (cutout, no blending)
     this.#foliageMaterial_ = new THREE.ShaderMaterial({
-      uniforms,
+      uniforms: this.#foliageUniforms_,
       vertexShader: FoliageQuadVS,
       fragmentShader: FoliageQuadFS,
       transparent: false,
@@ -250,15 +291,15 @@ class GrassProject extends App {
     });
     depthMat.onBeforeCompile = (shader) => {
       // pass uniforms and attributes to depth shader
-      shader.uniforms.uTime         = uniforms.uTime;
-      shader.uniforms.uTexture      = uniforms.uTexture;
-      shader.uniforms.uLeafSize     = uniforms.uLeafSize;
-      shader.uniforms.uWindDir      = uniforms.uWindDir;
-      shader.uniforms.uWindStrength = uniforms.uWindStrength;
-      shader.uniforms.uBendStrength = uniforms.uBendStrength;
-      shader.uniforms.uFlutterAmp   = uniforms.uFlutterAmp;
-      shader.uniforms.uFlutterFreq  = uniforms.uFlutterFreq;
-      shader.uniforms.uPhaseGlobal  = uniforms.uPhaseGlobal;
+      shader.uniforms.uTime         = this.#foliageUniforms_.uTime;
+      shader.uniforms.uTexture      = this.#foliageUniforms_.uTexture;
+      shader.uniforms.uLeafSize     = this.#foliageUniforms_.uLeafSize;
+      shader.uniforms.uWindDir      = this.#foliageUniforms_.uWindDir;
+      shader.uniforms.uWindStrength = this.#foliageUniforms_.uWindStrength;
+      shader.uniforms.uBendStrength = this.#foliageUniforms_.uBendStrength;
+      shader.uniforms.uFlutterAmp   = this.#foliageUniforms_.uFlutterAmp;
+      shader.uniforms.uFlutterFreq  = this.#foliageUniforms_.uFlutterFreq;
+      shader.uniforms.uPhaseGlobal  = this.#foliageUniforms_.uPhaseGlobal;
 
       // inject varyings & attributes
       shader.vertexShader = `
@@ -330,12 +371,6 @@ class GrassProject extends App {
   }
 
   async #fallenLeaves_(gui) {
-    const textureLoader = new THREE.TextureLoader();
-    const leafTexture = await textureLoader.loadAsync('/resources/textures/leaf.png');
-    leafTexture.encoding = THREE.sRGBEncoding;
-    leafTexture.anisotropy = this.Renderer.capabilities.getMaxAnisotropy();
-    leafTexture.flipY = false;
-
     const leaf = new THREE.PlaneGeometry(0.2, 0.2, 1, 1);
 
     const { count, areaSize, maxHeight, center } = this.#leafParams_;
@@ -386,7 +421,7 @@ class GrassProject extends App {
       uWindStrength: { value: this.#leafParams_.windStrength },
       uFallSpeed: { value: this.#leafParams_.fallSpeed },
       uSpinMultiplier: { value: this.#leafParams_.spinSpeed },
-      uTexture: { value: leafTexture },
+      uTexture: { value: this.#leafTexture_ },
     };
 
     this.#leafMaterial_ = new THREE.ShaderMaterial({
@@ -401,6 +436,7 @@ class GrassProject extends App {
     this.#leafMesh_ = new THREE.InstancedMesh(leaf, this.#leafMaterial_, count);
     this.#leafMesh_.frustumCulled = false;
     this.#leafMesh_.renderOrder = 2;
+    this.#leafMesh_.visible = true;
     this.Scene.add(this.#leafMesh_);
 
     const folder = gui.addFolder('Fallen Leaves');
@@ -439,15 +475,13 @@ class GrassProject extends App {
       vertexShader: GroundVertexShader,
       fragmentShader: GroundFragmentShader,
       uniforms: {
-        uTexture: { value: this.#groundTexture_ },
+        uTexture: { value: this.#noiseGrassHeightTexture_ },
         uTextureRepeat: { value: this.#groundRepeat_ },
-        uNoiseTexture: { value: this.#noiseTexture_ },
+        uNoiseTexture: { value: this.#noiseGroundHeightTexture_ },
         uGrassColor1: { value: new THREE.Color(this.#terrainParams_.grassColor1) },
         uGrassColor2: { value: new THREE.Color(this.#terrainParams_.grassColor2) },
         uGroundColor1: { value: new THREE.Color(this.#terrainParams_.groundColor1) },
         uGroundColor2: { value: new THREE.Color(this.#terrainParams_.groundColor2) },
-        uMountainColor1: { value: new THREE.Color(this.#terrainParams_.mountainColor1) },
-        uMountainColor2: { value: new THREE.Color(this.#terrainParams_.mountainColor2) },
       },
       
       // Mesh standard props
@@ -464,77 +498,24 @@ class GrassProject extends App {
     this.Scene.add(groundMesh);
   }
 
-  #prepareGroundHeightOffsetData_() {
-    if (this.#groundHeightOffsetData_) return;
-    const image = this.#groundTexture_?.image;
-    if (!image) return;
+  async #prepareGrassHeightData_() {
+    if (this.#grassHeightData_) return;
 
-    const width = image.width || image.naturalWidth;
-    const height = image.height || image.naturalHeight;
-    if (!width || !height) return;
+    const {data} = await getImageData(this.#noiseGrassHeightTexture_?.image);
+    if (!data) return;
 
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) return;
-
-    context.drawImage(image, 0, 0, width, height);
-    const pixels = context.getImageData(0, 0, width, height).data;
-
-    const data = new Float32Array(width * height);
-    for (let i = 0; i < data.length; i++) {
-      data[i] = pixels[i * 4] / 255;
-    }
-
-    this.#groundHeightOffsetData_ = data;
-    this.#groundHeightWidth_ = width;
-    this.#groundHeightHeight_ = height;
+    this.#grassHeightData_ = data;
   }
 
-  #prepareGroundHeightData_() {
+  async #prepareGroundHeightData_() {
     if (this.#groundHeightData_) return;
-    const image = this.#noiseTexture_?.image;
-    if (!image) return;
 
-    const width = image.width || image.naturalWidth;
-    const height = image.height || image.naturalHeight;
-    if (!width || !height) return;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) return;
-
-    context.drawImage(image, 0, 0, width, height);
-    const pixels = context.getImageData(0, 0, width, height).data;
-
-    const data = new Float32Array(width * height);
-    for (let i = 0; i < data.length; i++) {
-      data[i] = pixels[i * 4] / 255;
-    }
+    const {data, width, height} = await getImageData(this.#noiseGroundHeightTexture_?.image);
+    if (!data) return;
 
     this.#groundHeightData_ = data;
     this.#groundHeightDataWidth_ = width;
     this.#groundHeightDataHeight_ = height;
-  }
-
-  #sampleGroundHeightOffset_(x, z) {
-    const data = this.#groundHeightOffsetData_;
-    const width = this.#groundHeightWidth_;
-    const height = this.#groundHeightHeight_;
-    if (!data || !width || !height) return 0;
-
-    let u = (x / this.#groundWidth_ + 0.5) * this.#groundRepeat_;
-    let v = (z / this.#groundWidth_ + 0.5) * this.#groundRepeat_;
-    u -= Math.floor(u);
-    v -= Math.floor(v);
-
-    const px = Math.min(width - 1, (u * width) | 0);
-    const py = Math.min(height - 1, (v * height) | 0);
-
-    return data[py * width + px];
   }
 
   #sampleGroundHeightData_(x, z) {
@@ -555,14 +536,11 @@ class GrassProject extends App {
   }
 
   async #grassBlades_(gui) {
-    const gltf = await this.loadGLTFFile('/models/Grass.glb');
-    const grassBlade = gltf.scene.getObjectByName('GrassBlade');
-
     const geometry = new THREE.InstancedBufferGeometry();
-    geometry.index = grassBlade.geometry.index;
-    geometry.attributes.position = grassBlade.geometry.attributes.position;
-    geometry.attributes.uv = grassBlade.geometry.attributes.uv;
-    geometry.attributes.normal = grassBlade.geometry.attributes.normal;
+    geometry.index = this.#grassBladeGeometry_.index;
+    geometry.attributes.position = this.#grassBladeGeometry_.attributes.position;
+    geometry.attributes.uv = this.#grassBladeGeometry_.attributes.uv;
+    geometry.attributes.normal = this.#grassBladeGeometry_.attributes.normal;
 
     const instanceCount = 60000 * 10;
 
@@ -579,11 +557,10 @@ class GrassProject extends App {
       // offset of each blade
       const x = (Math.random() - 0.5) * this.#groundWidth_;
       const z = (Math.random() - 0.5) * this.#groundWidth_;
-      let groundHeightOffset = this.#sampleGroundHeightOffset_(x, z) * 0.01;
       let groundHeight = this.#sampleGroundHeightData_(x, z);
       if (groundHeight < 0.475) continue;
       groundHeight = Math.pow(groundHeight + 0.5, 2.5) - 1.1;
-      offsets.push(x, groundY + groundHeight + groundHeightOffset, z);
+      offsets.push(x, groundY + groundHeight, z);
 
       // define random growth directions
       // Rotation around Y axis
@@ -640,10 +617,12 @@ class GrassProject extends App {
       fragmentShader: GrassBladeFragmentShader,
       uniforms: {
         uTime: { value: 0 },
-        uNoiseTexture: { value: this.#noiseTexture_ },
-        uTipColor: { value: new THREE.Color(this.#terrainParams_.grassColor1) },
-        uBaseColor: { value: new THREE.Color(this.#terrainParams_.grassColor2) },
-        uGroundTexture: { value: this.#groundTexture_ },
+        uNoiseTexture: { value: this.#noiseGroundHeightTexture_ },
+        // uTipColor: { value: new THREE.Color(this.#terrainParams_.grassColor1) },
+        // uBaseColor: { value: new THREE.Color(this.#terrainParams_.grassColor2) },
+        uTipColor: { value: new THREE.Color(this.#grassColorParams_.yellowTipColor) },
+        uBaseColor: { value: new THREE.Color(this.#grassColorParams_.yellowBaseColor) },
+        uGroundTexture: { value: this.#noiseGrassHeightTexture_ },
         uGroundTextureRepeat: { value: this.#groundRepeat_ },
         uGroundWidth: { value: this.#groundWidth_ },
       },
@@ -663,6 +642,15 @@ class GrassProject extends App {
     instancedMesh.customDepthMaterial = depthMaterial;
     instancedMesh.frustumCulled = false;
     this.Scene.add(instancedMesh);
+
+    // GUI tweaks grass colors
+    const folder = gui.addFolder('Grass Blades');
+    folder.addColor(this.#terrainParams_, 'grassColor1').name('Tip Color').onChange((v) => {
+      this.#grassMaterial_.uniforms.uTipColor.value.set(v);
+    });
+    folder.addColor(this.#terrainParams_, 'grassColor2').name('Base Color').onChange((v) => {
+      this.#grassMaterial_.uniforms.uBaseColor.value.set(v);
+    });
   }
 
   async #pond_(gui) {
@@ -685,15 +673,215 @@ class GrassProject extends App {
       wireframe: false,
     });
 
+    const depthMaterial = new THREE.MeshDepthMaterial({
+      depthPacking: THREE.RGBADepthPacking,
+      // Other properties can be set here
+    });
+
     const pondMesh = new THREE.Mesh(pondGeometry, this.#waterMaterial_);
+    pondMesh.customDepthMaterial = depthMaterial;
     pondMesh.position.set(0, -0.2, -9.8);
     pondMesh.castShadow = false;
     pondMesh.receiveShadow = true;
     this.Scene.add(pondMesh);
+  }
 
-    gui.addColor(this.#waterParams_, 'color').name('Pond Color').onChange((v) => {
-      this.#waterMaterial_.uniforms.uColor.value.set(new THREE.Color(v));
+  #audioTrackChange_(color) {
+    const track = this.#playlist_[color];
+    if (!track) return;
+
+    const next = new Howl({
+      src: [track],
+      volume: 0.5,
+      loop: true,
+    })
+
+    const current = this.#sound_;
+    current.fade(current.volume(), 0, 1500);
+    current.once('fade', () => {
+      current.stop();
+      this.#sound_ = next;
+      this.#sound_.mute(this.#soundMuted_);
+      this.#sound_.play();
     });
+  }
+
+  #leafColorChange_(color) {
+    if (!this.#leafUniforms_ || color === this.#leafColor_) return;
+
+    let lightColor, darkColor, tipColor, baseColor;
+    switch (color) {
+      case 'green':
+        lightColor = this.#leafParams_.leafGreenLight;
+        darkColor = this.#leafParams_.leafGreenDark;
+        tipColor = this.#grassColorParams_.greenTipColor;
+        baseColor = this.#grassColorParams_.greenBaseColor;
+        break;
+      case 'yellow':
+        lightColor = this.#leafParams_.leafYellowLight;
+        darkColor = this.#leafParams_.leafYellowDark;
+        tipColor = this.#grassColorParams_.yellowTipColor;
+        baseColor = this.#grassColorParams_.yellowBaseColor;
+        break;
+      case 'red':
+        lightColor = this.#leafParams_.leafRedLight;
+        darkColor = this.#leafParams_.leafRedDark;
+        tipColor = this.#grassColorParams_.redTipColor;
+        baseColor = this.#grassColorParams_.redBaseColor;
+        break;
+      default:
+        lightColor = this.#leafParams_.leafYellowLight;
+        darkColor = this.#leafParams_.leafYellowDark;
+        tipColor = this.#grassColorParams_.greenTipColor;
+        baseColor = this.#grassColorParams_.greenBaseColor;
+        break;
+    }
+
+    this.#audioTrackChange_(color);
+
+    // animate color change
+    this.Timeline
+      .to(this.#leafUniforms_.uColor.value, {
+        r: new THREE.Color(lightColor).r,
+        g: new THREE.Color(lightColor).g,
+        b: new THREE.Color(lightColor).b,
+        duration: 1.5,
+        ease: 'power2.inOut',
+        onComplete: () => {
+          this.#leafMesh_.visible = this.#leafColor_ !== 'green';
+          this.#leafMesh_.needUpdate = true;
+        },
+      })
+      .to(this.#foliageUniforms_.uLeafColor.value, {
+        r: new THREE.Color(lightColor).r,
+        g: new THREE.Color(lightColor).g,
+        b: new THREE.Color(lightColor).b,
+        duration: 1.5,
+        ease: 'power2.inOut',
+      }, '<')
+      .to(this.#foliageUniforms_.uDarkColor.value, {
+        r: new THREE.Color(darkColor).r,
+        g: new THREE.Color(darkColor).g,
+        b: new THREE.Color(darkColor).b,
+        duration: 1.5,
+        ease: 'power2.inOut',
+      }, '<')
+      .to(this.#grassMaterial_.uniforms.uTipColor.value, {
+        r: new THREE.Color(tipColor).r,
+        g: new THREE.Color(tipColor).g,
+        b: new THREE.Color(tipColor).b,
+        duration: 1.5,
+        ease: 'power2.inOut',
+      }, '<')
+      .to(this.#grassMaterial_.uniforms.uBaseColor.value, {
+        r: new THREE.Color(baseColor).r,
+        g: new THREE.Color(baseColor).g,
+        b: new THREE.Color(baseColor).b,
+        duration: 1.5,
+        ease: 'power2.inOut',
+      }, '<');
+
+      this.#leafColor_ = color;
+  }
+
+  registerUiEvents() {
+    this.#uiButtonIds_.forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+
+      const handler = () => this.#onUiButtonClick_(id);
+      el.addEventListener('click', handler, { once: false });
+    });
+  }
+
+  registerCoverEvent() {
+    const coverEl = document.getElementById('cover-container');
+    if (!coverEl) return;
+    
+    coverEl.addEventListener('asset-loaded', () => {
+      this.#onAssetLoaded_();
+    }, { once: true });
+  }
+
+  #onAssetLoaded_() {
+    this.Timeline
+      .to('#cover-container', { autoAlpha: 0, duration: 0.5, display: 'none', ease: 'power1.out', delay: 0.5 })
+      .fromTo('#menu-bar', { y: "10%", opacity: 0 }, { y: "0%", opacity: 1, duration: 1.0, ease: 'power2.inOut', onComplete: () => {
+        // play sound
+        this.#sound_.play();
+        this.#sound_.fade(0, 0.5, 2000);
+      }})
+  }
+
+  #onCoffeeButtonClick_() {
+    console.log('coffee button clicked');
+  }
+
+  #onBenchButtonClick_() {
+    console.log('bench button clicked');
+  }
+
+  #onPondButtonClick_() {
+    console.log('pond button clicked');
+  }
+
+  #onMusicButtonClick_() {
+    this.Timeline.to('#img-music-stop', { opacity: this.#soundMuted_ ? 1.0 : 0.0, duration: 0.3 });
+    this.#soundMuted_ = !this.#soundMuted_;
+    if (this.#soundMuted_) {
+      this.#sound_.fade(this.#sound_.volume(), 0, 1500);
+      this.#sound_.once('fade', () => {
+        this.#sound_.mute(true);
+      });
+    } else {
+      this.#sound_.mute(false);
+      this.#sound_.fade(0, 0.5, 2000);
+    }
+  }
+
+  #onInfoButtonClick_() {
+    this.Timeline
+      .to('#info-modal', { autoAlpha: 1, duration: 0.5, display: 'flex', ease: 'power3.out' })
+      .fromTo('#info-panel', { scale: 0.8 }, { scale: 1.0, duration: 0.5, ease: 'power3.out' }, '<');
+  }
+
+  #onCloseInfoButtonClick_() {
+    this.Timeline
+      .to('#info-modal', { autoAlpha: 0, duration: 0.5, display: 'none', ease: 'power3.out' })
+      .to('#info-panel', { scale: 0.8, duration: 0.5, ease: 'power3.out' }, '<');
+  }
+
+  #onUiButtonClick_(id) {
+    switch (id) {
+      case 'btn-maple-green':
+        this.#leafColorChange_('green');
+        break;
+      case 'btn-maple-yellow':
+        this.#leafColorChange_('yellow');
+        break;
+      case 'btn-maple-red':
+        this.#leafColorChange_('red');
+        break;
+      case 'btn-coffee':
+        this.#onCoffeeButtonClick_();
+        break;
+      case 'btn-bench':
+        this.#onBenchButtonClick_();
+        break;
+      case 'btn-pond':
+        this.#onPondButtonClick_();
+        break;
+      case 'btn-music':
+        this.#onMusicButtonClick_();
+        break;
+      case 'btn-info':
+        this.#onInfoButtonClick_();
+        break;
+      case 'btn-close-info':
+        this.#onCloseInfoButtonClick_();
+        break;
+      default: break;
+    }
   }
 
   onStep(timeElapsed, totalTime) {
@@ -721,4 +909,6 @@ let APP_ = new GrassProject();
 
 window.addEventListener('DOMContentLoaded', async () => {
   await APP_.initialize();
+  APP_.registerCoverEvent();
+  APP_.registerUiEvents();
 });

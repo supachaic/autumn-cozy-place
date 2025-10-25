@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "description": "Autumn cozy place where you can find a spot to relax.",
+  "homepage": "https://autumn-cozy-place.vercel.app/",
+  "author": "Supachai Chanarittichai",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -14,7 +17,11 @@
     "vite-plugin-restart": "^1.0.0"
   },
   "dependencies": {
+    "@tailwindcss/vite": "^4.1.16",
+    "gsap": "^3.13.0",
+    "howler": "^2.2.4",
     "lil-gui": "^0.21.0",
+    "tailwindcss": "^4.1.16",
     "three": "^0.180.0",
     "three-custom-shader-material": "^6.4.0"
   }

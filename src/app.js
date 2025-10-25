@@ -6,6 +6,8 @@ import { GLTFLoader } from 'three/examples/jsm/Addons.js';
 import { DRACOLoader } from 'three/examples/jsm/Addons.js';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 import GUI from 'lil-gui';
+import gsap from 'gsap';
+import { MorphSVGPlugin } from 'gsap/MorphSVGPlugin';
 
 class App {
   #threejs_ = null;
@@ -17,9 +19,12 @@ class App {
   #resolution_ = new THREE.Vector2(window.innerWidth, window.innerHeight);
   #dpr_ = Math.min(window.devicePixelRatio, 2);
 
+  #loadingManager_ = null;
   #gltfLoader_ = null;
   #composer_ = null;
   #debugUI_ = null;
+  #enableDebug_ = false;
+  #tl_ = null;
 
   constructor() {
   }
@@ -37,10 +42,12 @@ class App {
     this.#raf_();
 
     // add stats
-    this.#stats_ = new Stats();
-    document.body.appendChild(this.#stats_.dom);
-    this.#stats_.showPanel(0);
-    this.#stats_.dom.style.position = 'absolute';
+    if (this.#enableDebug_) {
+      this.#stats_ = new Stats();
+      document.body.appendChild(this.#stats_.dom);
+      this.#stats_.showPanel(0);
+      this.#stats_.dom.style.position = 'absolute';
+    }
   }
 
   async #setupProject_() {
@@ -59,7 +66,41 @@ class App {
   }
 
   async #setupLoaders_() {
-    this.#gltfLoader_ = new GLTFLoader();
+    gsap.registerPlugin(MorphSVGPlugin);
+    this.#tl_ = gsap.timeline();
+
+    this.#tl_
+      .fromTo('#autumn-panel', { scale: 0.2, opacity: 0.5 }, { scale: 1.0, opacity: 1, duration: 1.5, ease: 'power2.out' })
+      .to('#progress-0', { autoAlpha: 1, display: 'block', duration: 0.5, ease: "power1.out" })
+      .to('#Brewing', { autoAlpha: 1, duration: 1.0, display: 'block', ease: "power1.out" }, )
+      .to('#progress-0', { morphSVG: '#progress-10', duration: 1.0, ease: "elastic.out(1,0.75)"}, "-=1.0")
+      .to('#progress-0', { morphSVG: '#progress-50', duration: 1.0, ease: "elastic.out(1,0.75)" })
+      .to('#progress-0', { morphSVG: '#progress-80', duration: 1.0, ease: "elastic.out(1,0.75)" });
+
+    this.#loadingManager_ = new THREE.LoadingManager(
+      () => {
+      },
+      (itemUrl, itemsLoaded, itemsTotal) => {
+        const progress = (itemsLoaded / itemsTotal * 100);
+
+        if (progress >= 80) {
+          this.#tl_
+            .to('#progress-0', { morphSVG: '#progress-100', duration: 1.5, ease: "elastic.out(1,0.75)" });
+        }
+
+        if (progress >= 100) {
+          // Show enter button
+          this.#tl_
+            .to('#Brewing', { autoAlpha: 0, duration: 0.5, display: 'none', ease: "power1.out", onComplete: () => {
+              document.getElementById('cover-container').dispatchEvent(new CustomEvent('asset-loaded', { detail: { via: 'gsap' } }) );
+            }})
+        }
+      },
+      (url) => {
+        console.error(`There was an error loading ${url}`);
+      }
+    );
+    this.#gltfLoader_ = new GLTFLoader(this.#loadingManager_);
 
     const dracoLoader = new DRACOLoader();
     dracoLoader.setDecoderPath('./libs/draco/');
@@ -77,6 +118,9 @@ class App {
     document.body.appendChild(this.#threejs_.domElement);
 
     this.#debugUI_ = new GUI();
+    if (!this.#enableDebug_) {
+      this.#debugUI_.hide();
+    }
 
     const fov = 45;
     const aspect = window.innerWidth / window.innerHeight;
@@ -154,7 +198,9 @@ class App {
       this.#step_(this.#clock_.getDelta());
       this.#render_();
       this.#raf_();
-      this.#stats_.update();
+      if (this.#stats_) {
+        this.#stats_.update();
+      }
     });
   }
 
@@ -245,6 +291,7 @@ class App {
   get Camera() { return this.#camera_; }
   get Renderer() { return this.#threejs_; }
   get Resolution() { return this.#resolution_; }
+  get Timeline() { return this.#tl_; }
 }
 
 export { App };
