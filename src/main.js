@@ -915,6 +915,9 @@ class GrassProject extends App {
     const keyStart = this.#currentPoint_;
     const path = this.#findPath_(keyStart, moveTo);
 
+    this.Timeline.pause();
+    this.Timeline.to('#menu-bar', { y: "10%", opacity: 0, pointerEvents: 'none', display: 'none', duration: 0.5, ease: 'power2.inOut' });
+
     const tween = flyAlong(this.Camera, path, {
       speed: 1,        // ~units/sec
       lookAhead: 0.03,  // bump for stronger “leading”
@@ -956,7 +959,9 @@ class GrassProject extends App {
       }
     });
 
-    tween.play();
+    this.Timeline.add(tween);
+
+    this.Timeline.play();
   }
 
   #onCoffeeButtonClick_() {
