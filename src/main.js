@@ -915,8 +915,18 @@ class GrassProject extends App {
     const keyStart = this.#currentPoint_;
     const path = this.#findPath_(keyStart, moveTo);
 
+    const node = new THREE.Vector3();
+    const dir = new THREE.Vector3();
+    dir.subVectors(path[1], path[0]).normalize();
+    node.copy(path[0]);
+    node.addScaledVector(dir, 0.5); // offset from starting point
+    const tweenLookAtFirstNode = this.cameraLookAt(node);
+
+
     this.Timeline.pause();
     this.Timeline.to('#menu-bar', { y: "10%", opacity: 0, pointerEvents: 'none', display: 'none', duration: 0.5, ease: 'power2.inOut' });
+
+    this.Timeline.add(tweenLookAtFirstNode);
 
     const tween = flyAlong(this.Camera, path, {
       speed: 1,        // ~units/sec
