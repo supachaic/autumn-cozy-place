@@ -8,7 +8,7 @@ uniform float uTime;
 uniform float uGroundTextureRepeat;
 uniform float uGroundWidth;
 uniform sampler2D uGroundTexture;
-uniform sampler2D uNoiseTexture;
+// uniform sampler2D uNoiseGroundHeightTexture; // IGNORE
 
 varying float vHeight;
 
@@ -75,10 +75,10 @@ void main() {
 
     vec3 basePosition = vec3(position.x, position.y + position.y * aStretch, position.z);
     // vec3 basePosition = vec3(position.x, position.y, position.z);
-    vec3 vPosition = rotateVectorByQuaternion(basePosition, direction);
+    vec3 tempPosition = rotateVectorByQuaternion(basePosition, direction);
 
     float halfAngle = noise * 0.35; // max angle of 45 degrees (in radians)
-    vec3 bentPosition = rotateVectorByQuaternion(vPosition, normalize(vec4(sin(halfAngle), 0.0, -sin(halfAngle), cos(halfAngle))));
+    vec3 bentPosition = rotateVectorByQuaternion(tempPosition, normalize(vec4(sin(halfAngle), 0.0, -sin(halfAngle), cos(halfAngle))));
 
     vec3 finalPos = offset + bentPosition * 1.5;
     

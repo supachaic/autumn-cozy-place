@@ -1,15 +1,18 @@
 import * as THREE from 'three';
 
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { EffectComposer, HDRLoader, OutputPass, RenderPass, SMAAPass } from 'three/examples/jsm/Addons.js';
+import { EffectComposer, HDRLoader, OutputPass, RenderPass, SMAAPass, PointerLockControls, OrbitControls } from 'three/examples/jsm/Addons.js';
 import { GLTFLoader } from 'three/examples/jsm/Addons.js';
 import { DRACOLoader } from 'three/examples/jsm/Addons.js';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 import GUI from 'lil-gui';
 import gsap from 'gsap';
 import { MorphSVGPlugin } from 'gsap/MorphSVGPlugin';
+import { lookAt } from './utils/cameraLookAt';
 
 class App {
+  #enableDebug_ = false;
+  #skipLoading_ = false;
+
   #threejs_ = null;
   #camera_ = null;
   #scene_ = null;
@@ -23,8 +26,11 @@ class App {
   #gltfLoader_ = null;
   #composer_ = null;
   #debugUI_ = null;
-  #enableDebug_ = false;
   #tl_ = null;
+
+  #cameraStart_ = new THREE.Vector3(13.6, 1.5, 13.0);
+  #cameraLookTarget_ = new THREE.Vector3(0, 2, 0);
+  #controlsMethod_ = 'pointer-lock'; // 'orbit' or 'pointer-lock'
 
   constructor() {
   }
@@ -52,6 +58,7 @@ class App {
 
   async #setupProject_() {
     await this.#setupRenderer_();
+    await this.#setupLoadingScene_();
     await this.#setupLoaders_();
 
     // Initialize post fx
@@ -65,18 +72,30 @@ class App {
     await this.onSetupProject(projectFolder);
   }
 
-  async #setupLoaders_() {
+  async #setupLoadingScene_() {
     gsap.registerPlugin(MorphSVGPlugin);
     this.#tl_ = gsap.timeline();
 
+    if (this.#skipLoading_) {
+      this.#tl_.to('#cover-container', { autoAlpha: 0, duration: 0.1, display: 'none', ease: 'power1.out', onComplete: () => {
+        document.getElementById('cover-container').dispatchEvent(new CustomEvent('asset-loaded', { detail: { via: 'gsap' } }) );
+      }});
+      return;
+    }
+
     this.#tl_
-      .fromTo('#autumn-panel', { scale: 0.2, opacity: 0.5 }, { scale: 1.0, opacity: 1, duration: 1.5, ease: 'power2.out' })
-      .to('#progress-0', { autoAlpha: 1, display: 'block', duration: 0.5, ease: "power1.out" })
-      .to('#Brewing', { autoAlpha: 1, duration: 1.0, display: 'block', ease: "power1.out" }, )
-      .to('#progress-0', { morphSVG: '#progress-10', duration: 1.0, ease: "elastic.out(1,0.75)"}, "-=1.0")
+      .to('#cover-container', { autoAlpha: 1, duration: 0.1, display: 'flex', ease: 'power1.out' })
+      .fromTo('#autumn-panel', { scale: 0.2, opacity: 0.5 }, { scale: 1.0, opacity: 1, duration: 1.5, ease: 'power2.out' }, '<')
+      .to('#coffee-pot', { autoAlpha: 1, duration: 1.5, display: 'block', ease: "power3.out" })
+      .to('#Brewing', { autoAlpha: 1, duration: 1.0, display: 'block', ease: "power1.out" }, '<')
+      .set('#progress-0', { autoAlpha: 1, display: 'block'})
+      .to('#progress-0', { morphSVG: '#progress-10', duration: 1.0, ease: "elastic.out(1,0.75)"} )
       .to('#progress-0', { morphSVG: '#progress-50', duration: 1.0, ease: "elastic.out(1,0.75)" })
       .to('#progress-0', { morphSVG: '#progress-80', duration: 1.0, ease: "elastic.out(1,0.75)" });
 
+  }
+
+  async #setupLoaders_() {
     this.#loadingManager_ = new THREE.LoadingManager(
       () => {
       },
@@ -91,7 +110,7 @@ class App {
         if (progress >= 100) {
           // Show enter button
           this.#tl_
-            .to('#Brewing', { autoAlpha: 0, duration: 0.5, display: 'none', ease: "power1.out", onComplete: () => {
+            .to('#Brewing', { autoAlpha: 1, duration: 0.1, display: 'block', ease: "power1.out", onComplete: () => {
               document.getElementById('cover-container').dispatchEvent(new CustomEvent('asset-loaded', { detail: { via: 'gsap' } }) );
             }})
         }
@@ -122,26 +141,50 @@ class App {
       this.#debugUI_.hide();
     }
 
+    // Setup camera
     const fov = 45;
     const aspect = window.innerWidth / window.innerHeight;
     const near = 0.1;
     const far = 1000;
     this.#camera_ = new THREE.PerspectiveCamera(fov, aspect, near, far);
-    this.#camera_.position.set(16.5, 1.5, 4);
-    this.#camera_.lookAt(new THREE.Vector3(0, 2, 0));
+    // this.#camera_.position.set(11.5, 1.5, 4);
+    this.#camera_.position.copy(this.#cameraStart_);
+    this.#camera_.lookAt(this.#cameraLookTarget_);
+    this.#camera_.updateMatrixWorld();
 
-    this.#debugUI_.add(this.#camera_.position, 'x', -100, 100, 0.1).name('Camera X');
-    this.#debugUI_.add(this.#camera_.position, 'y', -100, 100, 0.1).name('Camera Y');
-    this.#debugUI_.add(this.#camera_.position, 'z', -100, 100, 0.1).name('Camera Z');
-    this.#debugUI_.add(this.#camera_, 'fov', 1, 180, 1).name('Camera FOV').onChange(() => {
-      this.#camera_.updateProjectionMatrix();
-    });
+    // this.#debugUI_.add(this.#camera_.position, 'x', -100, 100, 0.01).name('Camera X');
+    // this.#debugUI_.add(this.#camera_.position, 'y', -100, 100, 0.01).name('Camera Y');
+    // this.#debugUI_.add(this.#camera_.position, 'z', -100, 100, 0.01).name('Camera Z');
+    // this.#debugUI_.add(this.#camera_, 'fov', 1, 180, 1).name('Camera FOV').onChange(() => {
+    //   this.#camera_.updateProjectionMatrix();
+    // });
+    // this.#debugUI_.add(this.#camera_.quaternion, 'x', -1, 1, 0.01).name('Camera QX');
+    // this.#debugUI_.add(this.#camera_.quaternion, 'y', -1, 1, 0.01).name('Camera QY');
+    // this.#debugUI_.add(this.#camera_.quaternion, 'z', -1, 1, 0.01).name('Camera QZ');
+    // this.#debugUI_.add(this.#camera_.quaternion, 'w', -1, 1, 0.01).name('Camera QW');
 
+    // Setup controls
+    if (this.#controlsMethod_ === 'orbit') {
+      this.#controls_ = new OrbitControls(this.#camera_, this.#threejs_.domElement);
+      this.#controls_.target.copy(this.#cameraLookTarget_);
+      this.#controls_.enableDamping = true;
+      this.#controls_.dampingFactor = 0.05;
+      this.#controls_.enablePan = false;
+      this.#controls_.minDistance = 2;
+      this.#controls_.maxDistance = 50;
+      // this.#controls_.maxPolarAngle = Math.PI / 2 - 0.1; // prevent going below ground
 
-    this.#controls_ = new OrbitControls(this.#camera_, this.#threejs_.domElement);
-    this.#controls_.enableDamping = true;
-    this.#controls_.target.set(0, 0, 0);
-    this.#controls_.update();
+    } else if (this.#controlsMethod_ === 'pointer-lock') {
+      this.#controls_ = new PointerLockControls(this.#camera_, this.#threejs_.domElement);
+      
+      this.#controls_.addEventListener('lock', () => {
+        this.#tl_.to('#menu-bar', { autoAlpha: 0, duration: 0.5, ease: 'power1.out' });
+      });
+      
+      this.#controls_.addEventListener('unlock', () => {
+        this.#tl_.to('#menu-bar', { autoAlpha: 1, duration: 0.5, ease: 'power1.out', delay: 1.0 });
+      });
+    }
 
     this.#scene_ = new THREE.Scene();
     this.#scene_.background = new THREE.Color(0x000000);
@@ -212,6 +255,15 @@ class App {
   #step_(timeElapsed) {
     this.#controls_.update(timeElapsed);
     this.onStep(timeElapsed, this.#clock_.getElapsedTime());
+  }
+
+  cameraLookAt(target) {
+    if (this.#controls_.isLocked) {
+      this.#controls_.unlock();
+    }
+
+    const tween = lookAt(this.#camera_, target);
+    return tween;
   }
 
   addToScene(object) {
@@ -289,9 +341,11 @@ class App {
   // Getters
   get Scene() { return this.#scene_; }
   get Camera() { return this.#camera_; }
+  get Controls() { return this.#controls_; }
   get Renderer() { return this.#threejs_; }
   get Resolution() { return this.#resolution_; }
   get Timeline() { return this.#tl_; }
+  get CameraLookTarget() { return this.#cameraLookTarget_; }
 }
 
 export { App };

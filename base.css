@@ -1,4 +1,13 @@
+/* @import url('https://fonts.googleapis.com/css2?family=Megrim&family=Monoton&family=Pacifico&family=Playpen+Sans+Hebrew:wght@100..800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Londrina+Shadow&display=swap'); */
+@import url('https://fonts.googleapis.com/css2?family=Londrina+Shadow&family=Playpen+Sans:wght@100..800&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
 @import 'tailwindcss';
+
+@theme {
+  --font-roboto: 'Roboto', sans-serif;
+  --font-playpen: 'Playpen Sans Hebrew', sans-serif;
+  --font-londrina-shadow: 'Londrina Shadow', sans-serif;
+}
 
 body {
   width: 100%;
@@ -8,4 +17,21 @@ body {
   margin: 0;
   padding: 0;
   overscroll-behavior: none;
+}
+
+/* Custom cozy brown scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(40, 28, 15, 0.7);
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #b37429, #7a4c16);
+  border-radius: 10px;
+  border: 2px solid rgba(0, 0, 0, 0.4);
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #d8a04b, #945d20);
 }

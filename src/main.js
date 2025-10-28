@@ -15,6 +15,9 @@ import LeavesFragmentShader from './shaders/leaves/fragment.glsl';
 import WaterVertexShader from './shaders/water/vertex.glsl';
 import WaterFragmentShader from './shaders/water/fragment.glsl';
 import { getImageData } from './utils/image-helper';
+import { aStar, buildGraph, smoothPath } from './utils/pathfinder';
+import { flyAlong } from './utils/animateCamera';
+import gsap from 'gsap';
 
 class GrassProject extends App {
   #uiButtonIds_ = [
@@ -28,10 +31,19 @@ class GrassProject extends App {
     'btn-music',
     'btn-info',
     'btn-close-info',
+    'btn-camera-360',
+
+    // coffee menu
+    'menu-latte',
+    'menu-cappuccino',
+    'menu-espresso',
+    'menu-black-coffee',
   ];
+
   #enableAnimation_ = true;
   #sound_ = null;
   #soundMuted_ = false;
+  #debugWaypoint_ = false;
 
   #playlist_ = {
     green: './resources/audio/chill-lofi-music-409356.mp3',
@@ -44,7 +56,6 @@ class GrassProject extends App {
   #groundWidth_ = 30;
   #noiseGrassHeightTexture_ = null;
   #groundRepeat_ = 2;
-  #grassHeightData_ = null;
   #groundUV_ = new THREE.Vector2();
 
   #groundHeightData_ = null;
@@ -53,12 +64,12 @@ class GrassProject extends App {
   #noiseGroundHeightTexture_ = null;
 
   #grassColorParams_ = {
-    greenTipColor: '#b8df2a',
-    greenBaseColor: '#43731c',
-    yellowTipColor: '#d4e029',
-    yellowBaseColor: '#43731c',
-    redTipColor: '#dcdf2a',
-    redBaseColor: '#54731c',
+    greenGrassColor1: '#b8df2a',
+    greenGrassColor2: '#43731c',
+    yellowGrassColor1: '#d4e029',
+    yellowGrassColor2: '#43731c',
+    redGrassColor1: '#dcdf2a',
+    redGrassColor2: '#54731c',
   }
 
   #waterParams_ = {
@@ -81,7 +92,7 @@ class GrassProject extends App {
   #foliageMaterial_ = null;
   #foliageUniforms_ = null;
 
-  #leafColor_ = 'yellow'; // green, yellow, red
+  #leafColor_ = 'green'; // green, yellow, red
   #leafTexture_ = null;
   #leafMaterial_ = null;
   #leafMesh_ = null;
@@ -97,8 +108,6 @@ class GrassProject extends App {
     windDirection: new THREE.Vector3(1, 0, 0.75).normalize(),
 
     // leaf colors
-    // leafGreenLight: '#33FF33',
-    // leafGreenDark: '#006600',
     leafGreenLight: '#b8df2a',
     leafGreenDark: '#43731c',
     leafYellowLight: '#FFE300',
@@ -106,6 +115,20 @@ class GrassProject extends App {
     leafRedLight: '#FF5C33',
     leafRedDark: '#761800',
   };
+
+  // pathfinding graph nodes
+  #currentPoint_ = null;
+
+  #nodes_ = []; // { id: string, x: number, y: number, kind: "key" | "waypoint" }
+  #graph_ = null;
+  
+  // Scene objects
+  #objKombi_ = null;
+  #objPond_ = null;
+  #objTrashBin_ = null;
+  #hasCoffeeCup_ = false;
+
+  #menuBoardTexture_ = null;
 
   constructor() {
     super();
@@ -123,6 +146,8 @@ class GrassProject extends App {
     await this.#pond_(gui);
 
     await this.#initSound_();
+
+    await this.#createGraph_();
   }
 
   async #initSound_() {
@@ -171,28 +196,63 @@ class GrassProject extends App {
     this.#noiseGrassHeightTexture_.wrapS = this.#noiseGrassHeightTexture_.wrapT = THREE.RepeatWrapping;
     this.#noiseGrassHeightTexture_.colorSpace = THREE.SRGBColorSpace;
     this.#noiseGrassHeightTexture_.flipY = false; // grass height texture is not flipped
-    this.#prepareGrassHeightData_();
 
     this.#noiseGroundHeightTexture_ = await this.loadTexture('/resources/textures/noise-ground-height.png');
     this.#noiseGroundHeightTexture_.wrapS = this.#noiseGroundHeightTexture_.wrapT = THREE.RepeatWrapping;
     this.#noiseGroundHeightTexture_.colorSpace = THREE.SRGBColorSpace;
     this.#noiseGroundHeightTexture_.flipY = true; // ground noise texture is flipped
-    this.#prepareGroundHeightData_();
+    const {data, width, height} = await getImageData(this.#noiseGroundHeightTexture_?.image);
+    this.#groundHeightData_ = data;
+    this.#groundHeightDataWidth_ = width;
+    this.#groundHeightDataHeight_ = height;
 
     this.#leafTexture_ = await this.loadTexture('/resources/textures/leaf.png');
     this.#leafTexture_.encoding = THREE.sRGBEncoding;
     this.#leafTexture_.anisotropy = this.Renderer.capabilities.getMaxAnisotropy();
     this.#leafTexture_.flipY = false;
+
+    this.#menuBoardTexture_ = await this.loadTexture('/resources/textures/menu-board.png');
+    this.#menuBoardTexture_.encoding = THREE.sRGBEncoding;
+    this.#menuBoardTexture_.flipY = false;
   }
 
   async #sceneModel_(gui) {
-    const gltf = await this.loadGLTFFile('/models/cozy-scene2.glb');
-    console.log(gltf);
+    const gltf = await this.loadGLTFFile('/models/cozy-scene.glb');
 
     gltf.scene.traverse((child) => {
       if (child.isMesh) {
         if (child.name === 'foliage' || child.name === 'grass-blade') {
           child.visible = false;
+          return;
+        }
+
+        if (child.name.startsWith('key') || child.name.startsWith('way')) {
+          this.#nodes_.push({
+            id: child.name,
+            x: child.position.x,
+            y: child.position.z,
+            kind: child.name.startsWith('key') ? 'key' : 'waypoint',
+          });
+          child.visible = this.#debugWaypoint_;
+          return;
+        }
+
+        if (child.name.startsWith('obj')) {
+          child.visible = false;
+          
+          switch (child.name) {
+            case 'obj-kombi':
+              this.#objKombi_ = child.position.clone();
+              break;
+            case 'obj-pond':
+              this.#objPond_ = child.position.clone();
+              break;
+            case 'obj-trash-bin':
+              this.#objTrashBin_ = child.position.clone();
+              break;
+            default:
+              break;
+          }
           return;
         }
 
@@ -207,6 +267,15 @@ class GrassProject extends App {
     this.Scene.add(foliageInstanced);
 
     this.#grassBladeGeometry_ = gltf.scene.getObjectByName('grass-blade').geometry;
+
+    // menu board
+    const menuBoard = gltf.scene.getObjectByName('menu-board');
+    const newMat = new THREE.MeshBasicMaterial({
+      map: this.#menuBoardTexture_,
+      transparent: true,
+    });
+    menuBoard.material = newMat;
+    this.Scene.add(menuBoard);
   }
 
   async #createFoliageInstanced_(model, density) {
@@ -258,8 +327,8 @@ class GrassProject extends App {
       uModelPosition: { value: model.position },
       uTime:         { value: 0 },
       uTexture:      { value: texture },
-      uLeafColor:  { value: new THREE.Color(this.#leafParams_.leafYellowLight) },
-      uDarkColor:  { value: new THREE.Color(this.#leafParams_.leafYellowDark) },
+      uLeafColor:  { value: new THREE.Color(this.#leafParams_.leafGreenLight) },
+      uDarkColor:  { value: new THREE.Color(this.#leafParams_.leafGreenDark) },
       uLeafSize:     { value: 0.8 },        // world size of the card (meters)
       uWindDir:      { value: new THREE.Vector2(1, 0).normalize() },
       uWindStrength: { value: 0.5 },
@@ -413,7 +482,7 @@ class GrassProject extends App {
     const boundsHalf = areaSize * 0.5;
     this.#leafUniforms_ = {
       uTime: { value: 0 },
-      uColor: { value: new THREE.Color(this.#leafParams_.leafYellowLight) },
+      uColor: { value: new THREE.Color(this.#leafParams_.leafGreenLight) },
       uBoundsMin: { value: new THREE.Vector3(center.x - boundsHalf, 0, center.z - boundsHalf) },
       uBoundsMax: { value: new THREE.Vector3(center.x + boundsHalf, maxHeight, center.z + boundsHalf) },
       uBoundCenter: { value: center.clone() },
@@ -436,7 +505,7 @@ class GrassProject extends App {
     this.#leafMesh_ = new THREE.InstancedMesh(leaf, this.#leafMaterial_, count);
     this.#leafMesh_.frustumCulled = false;
     this.#leafMesh_.renderOrder = 2;
-    this.#leafMesh_.visible = true;
+    this.#leafMesh_.visible = false;
     this.Scene.add(this.#leafMesh_);
 
     const folder = gui.addFolder('Fallen Leaves');
@@ -496,26 +565,6 @@ class GrassProject extends App {
     groundMesh.castShadow = false;
     groundMesh.receiveShadow = true;
     this.Scene.add(groundMesh);
-  }
-
-  async #prepareGrassHeightData_() {
-    if (this.#grassHeightData_) return;
-
-    const {data} = await getImageData(this.#noiseGrassHeightTexture_?.image);
-    if (!data) return;
-
-    this.#grassHeightData_ = data;
-  }
-
-  async #prepareGroundHeightData_() {
-    if (this.#groundHeightData_) return;
-
-    const {data, width, height} = await getImageData(this.#noiseGroundHeightTexture_?.image);
-    if (!data) return;
-
-    this.#groundHeightData_ = data;
-    this.#groundHeightDataWidth_ = width;
-    this.#groundHeightDataHeight_ = height;
   }
 
   #sampleGroundHeightData_(x, z) {
@@ -617,11 +666,9 @@ class GrassProject extends App {
       fragmentShader: GrassBladeFragmentShader,
       uniforms: {
         uTime: { value: 0 },
-        uNoiseTexture: { value: this.#noiseGroundHeightTexture_ },
-        // uTipColor: { value: new THREE.Color(this.#terrainParams_.grassColor1) },
-        // uBaseColor: { value: new THREE.Color(this.#terrainParams_.grassColor2) },
-        uTipColor: { value: new THREE.Color(this.#grassColorParams_.yellowTipColor) },
-        uBaseColor: { value: new THREE.Color(this.#grassColorParams_.yellowBaseColor) },
+        // uNoiseGroundHeightTexture: { value: this.#noiseGroundHeightTexture_ },
+        uGrassColor1: { value: new THREE.Color(this.#grassColorParams_.greenGrassColor1) },
+        uGrassColor2: { value: new THREE.Color(this.#grassColorParams_.greenGrassColor2) },
         uGroundTexture: { value: this.#noiseGrassHeightTexture_ },
         uGroundTextureRepeat: { value: this.#groundRepeat_ },
         uGroundWidth: { value: this.#groundWidth_ },
@@ -646,10 +693,10 @@ class GrassProject extends App {
     // GUI tweaks grass colors
     const folder = gui.addFolder('Grass Blades');
     folder.addColor(this.#terrainParams_, 'grassColor1').name('Tip Color').onChange((v) => {
-      this.#grassMaterial_.uniforms.uTipColor.value.set(v);
+      this.#grassMaterial_.uniforms.uGrassColor1.value.set(v);
     });
     folder.addColor(this.#terrainParams_, 'grassColor2').name('Base Color').onChange((v) => {
-      this.#grassMaterial_.uniforms.uBaseColor.value.set(v);
+      this.#grassMaterial_.uniforms.uGrassColor2.value.set(v);
     });
   }
 
@@ -686,6 +733,11 @@ class GrassProject extends App {
     this.Scene.add(pondMesh);
   }
 
+  async #createGraph_() {
+    this.#graph_ = buildGraph(this.#nodes_, {neighborRadius: 6, maxNeighbors: 8});
+    this.#currentPoint_ = 'key-start';
+  }
+
   #audioTrackChange_(color) {
     const track = this.#playlist_[color];
     if (!track) return;
@@ -709,31 +761,31 @@ class GrassProject extends App {
   #leafColorChange_(color) {
     if (!this.#leafUniforms_ || color === this.#leafColor_) return;
 
-    let lightColor, darkColor, tipColor, baseColor;
+    let lightColor, darkColor, GrassColor1, GrassColor2;
     switch (color) {
       case 'green':
         lightColor = this.#leafParams_.leafGreenLight;
         darkColor = this.#leafParams_.leafGreenDark;
-        tipColor = this.#grassColorParams_.greenTipColor;
-        baseColor = this.#grassColorParams_.greenBaseColor;
+        GrassColor1 = this.#grassColorParams_.greenGrassColor1;
+        GrassColor2 = this.#grassColorParams_.greenGrassColor2;
         break;
       case 'yellow':
         lightColor = this.#leafParams_.leafYellowLight;
         darkColor = this.#leafParams_.leafYellowDark;
-        tipColor = this.#grassColorParams_.yellowTipColor;
-        baseColor = this.#grassColorParams_.yellowBaseColor;
+        GrassColor1 = this.#grassColorParams_.yellowGrassColor1;
+        GrassColor2 = this.#grassColorParams_.yellowGrassColor2;
         break;
       case 'red':
         lightColor = this.#leafParams_.leafRedLight;
         darkColor = this.#leafParams_.leafRedDark;
-        tipColor = this.#grassColorParams_.redTipColor;
-        baseColor = this.#grassColorParams_.redBaseColor;
+        GrassColor1 = this.#grassColorParams_.redGrassColor1;
+        GrassColor2 = this.#grassColorParams_.redGrassColor2;
         break;
       default:
         lightColor = this.#leafParams_.leafYellowLight;
         darkColor = this.#leafParams_.leafYellowDark;
-        tipColor = this.#grassColorParams_.greenTipColor;
-        baseColor = this.#grassColorParams_.greenBaseColor;
+        GrassColor1 = this.#grassColorParams_.greenGrassColor1;
+        GrassColor2 = this.#grassColorParams_.greenGrassColor2;
         break;
     }
 
@@ -766,17 +818,17 @@ class GrassProject extends App {
         duration: 1.5,
         ease: 'power2.inOut',
       }, '<')
-      .to(this.#grassMaterial_.uniforms.uTipColor.value, {
-        r: new THREE.Color(tipColor).r,
-        g: new THREE.Color(tipColor).g,
-        b: new THREE.Color(tipColor).b,
+      .to(this.#grassMaterial_.uniforms.uGrassColor1.value, {
+        r: new THREE.Color(GrassColor1).r,
+        g: new THREE.Color(GrassColor1).g,
+        b: new THREE.Color(GrassColor1).b,
         duration: 1.5,
         ease: 'power2.inOut',
       }, '<')
-      .to(this.#grassMaterial_.uniforms.uBaseColor.value, {
-        r: new THREE.Color(baseColor).r,
-        g: new THREE.Color(baseColor).g,
-        b: new THREE.Color(baseColor).b,
+      .to(this.#grassMaterial_.uniforms.uGrassColor2.value, {
+        r: new THREE.Color(GrassColor2).r,
+        g: new THREE.Color(GrassColor2).g,
+        b: new THREE.Color(GrassColor2).b,
         duration: 1.5,
         ease: 'power2.inOut',
       }, '<');
@@ -803,26 +855,188 @@ class GrassProject extends App {
     }, { once: true });
   }
 
+  registerBodyEvent() {
+    document.body.addEventListener('click', () => {
+      if (this.Controls.isLocked) {
+        this.Controls.unlock();
+        
+        let target = this.CameraLookTarget;
+
+        if (this.#currentPoint_ === 'key-kombi') {
+          target = this.#objKombi_;
+        } else if (this.#currentPoint_ === 'key-trash-bin') {
+          target = this.#objTrashBin_;
+        } else if (this.#currentPoint_.startsWith('key-pond')) {
+          target = this.#objPond_;
+        }
+
+        const tween = this.cameraLookAt(target);
+        tween.play();
+      }
+    });
+  }
+
   #onAssetLoaded_() {
     this.Timeline
-      .to('#cover-container', { autoAlpha: 0, duration: 0.5, display: 'none', ease: 'power1.out', delay: 0.5 })
-      .fromTo('#menu-bar', { y: "10%", opacity: 0 }, { y: "0%", opacity: 1, duration: 1.0, ease: 'power2.inOut', onComplete: () => {
+      .to('#cover-container', { autoAlpha: 0, duration: 1.5, display: 'none', ease: 'power1.out' })
+      .to('#autumn-panel', { scale: 0.2, opacity: 0, display: 'none', duration: 1.0, ease: 'power2.in' }, '<')
+      .fromTo('#menu-bar', { y: "10%", opacity: 0 }, { y: "0%", opacity: 1, pointerEvents: 'auto', display: 'flex', duration: 1.0, ease: 'power2.inOut', onComplete: () => {
         // play sound
         this.#sound_.play();
         this.#sound_.fade(0, 0.5, 2000);
       }})
   }
 
+  #findPath_(startId, endId) {
+    const rawPathIds = aStar(this.#graph_, startId, endId);
+
+    const waypointIds = rawPathIds.filter((id, idx) => {
+      if (idx === 0 || idx === rawPathIds.length - 1) return true; // keep endpoints
+      return this.#graph_.get(id)?.node.kind !== 'key';
+    });
+
+    const pathIds = smoothPath(waypointIds, this.#graph_);
+
+    const pathVec3 = pathIds.map(id => {
+      const n = this.#graph_.get(id).node;
+      const x = n.x, z = n.y;
+      const y = this.#sampleGroundHeightData_(x, z);
+      const height = Math.pow(y + 0.5, 2.5) - 1.1 + 0.1 + 1.6; // ground height + camera height
+      return new THREE.Vector3(x, height, z);
+    })
+    return pathVec3;
+  }
+
+  #onTheMove_(moveTo, lookAt=new THREE.Vector3(0, 2, 0)) {
+    if (this.#currentPoint_ === moveTo) return;
+
+    this.Controls.enabled = false;
+
+    const keyStart = this.#currentPoint_;
+    const path = this.#findPath_(keyStart, moveTo);
+
+    const tween = flyAlong(this.Camera, path, {
+      speed: 1,        // ~units/sec
+      lookAhead: 0.03,  // bump for stronger “leading”
+      rotLerp: 0.8     // higher = snappier rotation
+    });
+
+    tween.eventCallback('onComplete', () => {
+      const lookAtTween = this.cameraLookAt(lookAt);
+      lookAtTween.play();
+
+      this.Controls.enabled = true;
+      this.#currentPoint_ = moveTo;
+
+      if (moveTo === 'key-kombi') {
+        gsap.fromTo('#coffee-menu-hud', { autoAlpha: 0, display: 'none', y: '10%'}, { autoAlpha: 1.0, duration: 0.5, display: 'flex', y: '0%', ease: 'power2.inOut', delay: 1.0 });
+      } 
+      else {
+        if (moveTo === 'key-trash-bin') {
+          // hide coffee cup hud
+          gsap.to('#coffee-cup-hud', { 
+            x: '0vw',
+            y: '0vh',
+            xPercent: 0,
+            yPercent: 0,
+            autoAlpha: 0,
+            display: 'none',
+            duration: 0.5,
+            delay: 1.5,
+            ease: 'power2.out',
+            onComplete: () => {
+              this.#hasCoffeeCup_ = false;
+              // change trash bin icon to coffee cup
+              document.getElementById('img-coffee').style.display = 'block';
+              document.getElementById('img-trash-bin').style.display = 'none';
+            }
+          });
+        }
+        gsap.to('#menu-bar', { y: "0%", opacity: 1, pointerEvents: 'auto', display: 'flex', duration: 0.5, ease: 'power2.inOut', delay: 1.5 });
+      }
+    });
+
+    tween.play();
+  }
+
   #onCoffeeButtonClick_() {
-    console.log('coffee button clicked');
+    if (!this.#hasCoffeeCup_) {
+      this.#onTheMove_('key-kombi', this.#objKombi_);
+    } else {
+      this.#onTheMove_('key-trash-bin', this.#objTrashBin_);
+    }
+  }
+
+  #onSelectMenu_(id) {
+    const d0 = "M826.396,644.799l-0,2.594l-290.792,0l0,-0.594c0,0 98.855,-1.693 147.317,-1.013c47.825,0.671 143.475,-0.987 143.475,-0.987Z";
+
+    let menu = 'BLACK COFFEE';
+    switch (id) {
+      case 'menu-espresso':
+        menu = 'ESPRESSO';
+        break;
+      case 'menu-latte':
+        menu = 'LATTE';
+        break;
+      case 'menu-cappuccino':
+        menu = 'CAPPUCCINO';
+        break;
+      case 'menu-americano':
+        menu = 'AMERICANO';
+        break;
+      default:
+        menu = 'BLACK COFFEE';
+        break;
+    }
+
+    this.Timeline
+      .set('#cover-container', { className: 'absolute top-0 left-0 z-999 w-full h-full bg-transparent hidden flex-col justify-center items-center select-none' })
+      .set('#autumn-panel', { backgroundImage: 'none' })
+      .set('#white-panel', { display: 'block' })
+      .set('#progress-0', { attr: { d: d0 } })
+      .set('#coffee-type', { innerText: menu })
+      .to('#coffee-menu-hud', { autoAlpha: 0, duration: 0.5, display: 'none', y: '10%', ease: 'power2.inOut' })
+      .fromTo('#cover-container', { autoAlpha: 0, display: 'none' }, { autoAlpha: 1.0, duration: 0.5, display: 'flex', ease: 'power1.out' }, '<')
+      .fromTo('#autumn-panel', { scale: 0.2, opacity: 0.5, display: 'none' }, { scale: 1.0, opacity: 1, duration: 0.5, ease: 'power2.out', display: 'flex' })
+      .to('#coffee-pot', { autoAlpha: 1, duration: 0.5, display: 'block', ease: "power3.out" })
+      .to('#Brewing', { autoAlpha: 1, duration: 0.5, display: 'block', ease: "power1.out" }, '<')
+      .fromTo('#progress-0', {autoAlpha: 0, display: 'none'}, { autoAlpha: 1, display: 'block'})
+      .to('#progress-0', { morphSVG: '#progress-10', duration: 0.5, ease: "elastic.out(1,0.75)"} )
+      .to('#progress-0', { morphSVG: '#progress-50', duration: 0.5, ease: "elastic.out(1,0.75)" })
+      .to('#progress-0', { morphSVG: '#progress-80', duration: 0.5, ease: "elastic.out(1,0.75)" })
+      .to('#progress-0', { morphSVG: '#progress-100', duration: 0.5, ease: "elastic.out(1,0.75)" })
+      .to('#cover-container', { autoAlpha: 0, duration: 1.5, display: 'none', ease: 'power1.out' })
+      .to('#autumn-panel', { scale: 0.2, opacity: 0, display: 'none', duration: 1.0, ease: 'power2.in' }, '<')
+      .fromTo('#coffee-cup-hud', { autoAlpha: 0, display: 'none', scale: 0.4}, { autoAlpha: 1.0, scale: 1, duration: 0.5, display: 'flex', ease: 'power2.out' }, '-=0.3')
+      .to('#coffee-cup-hud', {
+        x: '50vw',
+        y: '50vh',
+        xPercent: -20,
+        yPercent: -20,
+        duration: 0.5,
+        ease: 'power2.inOut',
+        onComplete: () => {
+          this.#hasCoffeeCup_ = true;
+          // change coffee cup icon to trash bin
+        }
+      })
+      .set('#img-coffee', { display: 'none' }, '<')
+      .set('#img-trash-bin', { display: 'block' }, '<')
+      .to('#menu-bar', { y: "0%", opacity: 1, pointerEvents: 'auto', display: 'flex', duration: 0.5, ease: 'power2.inOut', delay: 0.5 });
   }
 
   #onBenchButtonClick_() {
-    console.log('bench button clicked');
+    // random node id from bench group
+    const benches = this.#nodes_.filter(n => n.id.startsWith('key-bench') && n.id !== this.#currentPoint_);
+    const randomBench = benches[(Math.random() * benches.length) | 0];
+    this.#onTheMove_(randomBench.id);
   }
 
   #onPondButtonClick_() {
-    console.log('pond button clicked');
+    // random node id from pond group
+    const ponds = this.#nodes_.filter(n => n.id.startsWith('key-pond') && n.id !== this.#currentPoint_);
+    const randomPond = ponds[(Math.random() * ponds.length) | 0];
+    this.#onTheMove_(randomPond.id, this.#objPond_);
   }
 
   #onMusicButtonClick_() {
@@ -851,7 +1065,16 @@ class GrassProject extends App {
       .to('#info-panel', { scale: 0.8, duration: 0.5, ease: 'power3.out' }, '<');
   }
 
+  #onCamera360ButtonClick_() {
+    this.Controls.lock();
+  }
+
   #onUiButtonClick_(id) {
+    if (id.startsWith('menu-')) {
+      this.#onSelectMenu_(id);
+      return;
+    }
+
     switch (id) {
       case 'btn-maple-green':
         this.#leafColorChange_('green');
@@ -870,6 +1093,9 @@ class GrassProject extends App {
         break;
       case 'btn-pond':
         this.#onPondButtonClick_();
+        break;
+      case 'btn-camera-360':
+        this.#onCamera360ButtonClick_();
         break;
       case 'btn-music':
         this.#onMusicButtonClick_();
@@ -903,6 +1129,8 @@ class GrassProject extends App {
       }
     }
   }
+
+
 }
 
 let APP_ = new GrassProject();
@@ -911,4 +1139,5 @@ window.addEventListener('DOMContentLoaded', async () => {
   await APP_.initialize();
   APP_.registerCoverEvent();
   APP_.registerUiEvents();
+  APP_.registerBodyEvent();
 });
