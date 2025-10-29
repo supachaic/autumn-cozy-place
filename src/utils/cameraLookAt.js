@@ -16,7 +16,7 @@ export function lookAt(camera, target, ease = "power2.inOut") {
     }
 
     // calculate duration based on angle distance
-    let duration = 5.0;
+    let duration = 2.0;
     const angleDiff = camera.quaternion.angleTo(targetQuaternion);
     duration *= THREE.MathUtils.clamp(angleDiff / Math.PI, 0.5, 2.5);
 

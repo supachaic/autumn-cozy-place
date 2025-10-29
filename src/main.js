@@ -917,13 +917,14 @@ class GrassProject extends App {
     const keyStart = this.#currentPoint_;
     const path = this.#findPath_(keyStart, moveTo);
 
-    const { tween, lookAtPos0, pos0 } = flyAlong(this.Camera, path, {
+    const { tween, lookAtPos } = flyAlong(this.Camera, path, {
       speed: 1,        // ~units/sec
       lookAhead: 0.03,  // bump for stronger “leading”
-      rotLerp: 0.8     // higher = snappier rotation
+      rotLerp: 0.8,     // higher = snappier rotation
+      ease: 'none',
     });
 
-    const tweenLookAtFirstNode = this.cameraLookAt(lookAtPos0);
+    const tweenLookAtFirstNode = this.cameraLookAt(lookAtPos);
     this.Timeline.add(tweenLookAtFirstNode);
 
     tween.eventCallback('onComplete', () => {

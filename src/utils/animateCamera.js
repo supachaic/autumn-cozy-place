@@ -16,11 +16,12 @@ import { gsap } from "gsap";
  */
 export function flyAlong(camera, pathVec3, opt = {}) {
   const {
-    duration = 6,
+    duration = 3,
     scaleByLength = true,
     speed = 12,
     lookAhead = 0.02,
     rotLerp = 0.15,
+    ease = "power1.inOut",
     onUpdate
   } = opt;
 
@@ -40,7 +41,7 @@ export function flyAlong(camera, pathVec3, opt = {}) {
   const tween = gsap.to(state, {
     t: 1,
     duration: totalDuration,
-    ease: "power1.inOut",
+    ease: ease,
     onUpdate: () => {
       const t = state.t;
 
@@ -77,8 +78,8 @@ export function flyAlong(camera, pathVec3, opt = {}) {
   const dir0 = new THREE.Vector3();
   dir0.subVectors(posAhead0, pos0).normalize();
 
-  const lookAtPos0 = new THREE.Vector3(); 
-  lookAtPos0.copy(pos0).add(dir0);
+  const lookAtPos = new THREE.Vector3(); 
+  lookAtPos.copy(pos0).add(dir0);
 
-  return { tween, lookAtPos0, pos0 };
+  return { tween, lookAtPos};
 }

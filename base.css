@@ -1,12 +1,12 @@
-/* @import url('https://fonts.googleapis.com/css2?family=Megrim&family=Monoton&family=Pacifico&family=Playpen+Sans+Hebrew:wght@100..800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Londrina+Shadow&display=swap'); */
-@import url('https://fonts.googleapis.com/css2?family=Londrina+Shadow&family=Playpen+Sans:wght@100..800&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
+/* @import url('https://fonts.googleapis.com/css2?family=Megrim&family=Monoton&family=Pacifico&family=sriracha+Sans+Hebrew:wght@100..800&display=swap'); */
+@import url('https://fonts.googleapis.com/css2?family=Sriracha&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Londrina+Shadow&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
 @import 'tailwindcss';
 
 @theme {
   --font-roboto: 'Roboto', sans-serif;
-  --font-playpen: 'Playpen Sans Hebrew', sans-serif;
   --font-londrina-shadow: 'Londrina Shadow', sans-serif;
+  --font-sriracha: 'Sriracha', cursive;
 }
 
 body {
