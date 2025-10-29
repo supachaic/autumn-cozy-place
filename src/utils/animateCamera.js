@@ -80,5 +80,5 @@ export function flyAlong(camera, pathVec3, opt = {}) {
   const lookAtPos0 = new THREE.Vector3(); 
   lookAtPos0.copy(pos0).add(dir0);
 
-  return {  tween, lookAtPos0  };
+  return { tween, lookAtPos0, pos0 };
 }

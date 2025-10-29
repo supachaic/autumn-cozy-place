@@ -139,6 +139,7 @@ class GrassProject extends App {
     await this.#loadTexture_();
 
     await this.#sceneModel_(gui);
+    await this.#createGraph_();
 
     await this.#ground_(gui);
     await this.#grassBlades_(gui);
@@ -146,8 +147,6 @@ class GrassProject extends App {
     await this.#pond_(gui);
 
     await this.#initSound_();
-
-    await this.#createGraph_();
   }
 
   async #initSound_() {
@@ -734,7 +733,7 @@ class GrassProject extends App {
   }
 
   async #createGraph_() {
-    this.#graph_ = buildGraph(this.#nodes_, {neighborRadius: 4, maxNeighbors: 6});
+    this.#graph_ = buildGraph(this.#nodes_, {neighborRadius: 3, maxNeighbors: 6});
     this.#currentPoint_ = 'key-start';
   }
 
@@ -918,7 +917,7 @@ class GrassProject extends App {
     const keyStart = this.#currentPoint_;
     const path = this.#findPath_(keyStart, moveTo);
 
-    const { tween, lookAtPos0 } = flyAlong(this.Camera, path, {
+    const { tween, lookAtPos0, pos0 } = flyAlong(this.Camera, path, {
       speed: 1,        // ~units/sec
       lookAhead: 0.03,  // bump for stronger “leading”
       rotLerp: 0.8     // higher = snappier rotation

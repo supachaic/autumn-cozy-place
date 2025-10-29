@@ -29,6 +29,7 @@ class App {
   #tl_ = null;
 
   #cameraStart_ = new THREE.Vector3(13.0, 1.5, 13.0);
+  // #cameraStartLookAt_ = new THREE.Vector3(13.0, 1.5, 13.0);
   #cameraLookTarget_ = new THREE.Vector3(0, 2, 0);
   #controlsMethod_ = 'pointer-lock'; // 'orbit' or 'pointer-lock'
 
@@ -102,7 +103,7 @@ class App {
       (itemUrl, itemsLoaded, itemsTotal) => {
         const progress = (itemsLoaded / itemsTotal * 100);
 
-        if (progress >= 80) {
+        if (progress >= 50) {
           this.#tl_
             .to('#progress-0', { morphSVG: '#progress-100', duration: 1.5, ease: "elastic.out(1,0.75)" });
         }
