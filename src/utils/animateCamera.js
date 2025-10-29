@@ -66,5 +66,19 @@ export function flyAlong(camera, pathVec3, opt = {}) {
     }
   });
 
-  return tween;
+
+  // initial lookAt position for chaining
+  const pos0 = new THREE.Vector3();
+  curve.getPoint(0, pos0);
+
+  const tAhead0 = Math.min(1, 0 + lookAhead);
+  const posAhead0 = new THREE.Vector3();
+  curve.getPoint(tAhead0, posAhead0);
+  const dir0 = new THREE.Vector3();
+  dir0.subVectors(posAhead0, pos0).normalize();
+
+  const lookAtPos0 = new THREE.Vector3(); 
+  lookAtPos0.copy(pos0).add(dir0);
+
+  return {  tween, lookAtPos0  };
 }

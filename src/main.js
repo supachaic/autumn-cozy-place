@@ -734,7 +734,7 @@ class GrassProject extends App {
   }
 
   async #createGraph_() {
-    this.#graph_ = buildGraph(this.#nodes_, {neighborRadius: 6, maxNeighbors: 8});
+    this.#graph_ = buildGraph(this.#nodes_, {neighborRadius: 4, maxNeighbors: 6});
     this.#currentPoint_ = 'key-start';
   }
 
@@ -912,27 +912,20 @@ class GrassProject extends App {
 
     this.Controls.enabled = false;
 
-    const keyStart = this.#currentPoint_;
-    const path = this.#findPath_(keyStart, moveTo);
-
-    const node = new THREE.Vector3();
-    const dir = new THREE.Vector3();
-    dir.subVectors(path[1], path[0]).normalize();
-    node.copy(path[0]);
-    node.addScaledVector(dir, 0.5); // offset from starting point
-    const tweenLookAtFirstNode = this.cameraLookAt(node);
-
-
     this.Timeline.pause();
     this.Timeline.to('#menu-bar', { y: "10%", opacity: 0, pointerEvents: 'none', display: 'none', duration: 0.5, ease: 'power2.inOut' });
 
-    this.Timeline.add(tweenLookAtFirstNode);
+    const keyStart = this.#currentPoint_;
+    const path = this.#findPath_(keyStart, moveTo);
 
-    const tween = flyAlong(this.Camera, path, {
+    const { tween, lookAtPos0 } = flyAlong(this.Camera, path, {
       speed: 1,        // ~units/sec
       lookAhead: 0.03,  // bump for stronger “leading”
       rotLerp: 0.8     // higher = snappier rotation
     });
+
+    const tweenLookAtFirstNode = this.cameraLookAt(lookAtPos0);
+    this.Timeline.add(tweenLookAtFirstNode);
 
     tween.eventCallback('onComplete', () => {
       const lookAtTween = this.cameraLookAt(lookAt);
@@ -943,8 +936,7 @@ class GrassProject extends App {
 
       if (moveTo === 'key-kombi') {
         gsap.fromTo('#coffee-menu-hud', { autoAlpha: 0, display: 'none', y: '10%'}, { autoAlpha: 1.0, duration: 0.5, display: 'flex', y: '0%', ease: 'power2.inOut', delay: 1.0 });
-      } 
-      else {
+      } else {
         if (moveTo === 'key-trash-bin') {
           // hide coffee cup hud
           gsap.to('#coffee-cup-hud', { 
@@ -970,7 +962,6 @@ class GrassProject extends App {
     });
 
     this.Timeline.add(tween);
-
     this.Timeline.play();
   }
 

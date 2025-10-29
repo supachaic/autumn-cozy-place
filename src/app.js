@@ -28,7 +28,7 @@ class App {
   #debugUI_ = null;
   #tl_ = null;
 
-  #cameraStart_ = new THREE.Vector3(13.6, 1.5, 13.0);
+  #cameraStart_ = new THREE.Vector3(13.0, 1.5, 13.0);
   #cameraLookTarget_ = new THREE.Vector3(0, 2, 0);
   #controlsMethod_ = 'pointer-lock'; // 'orbit' or 'pointer-lock'
 
@@ -262,7 +262,7 @@ class App {
       this.#controls_.unlock();
     }
 
-    const tween = lookAt(this.#camera_, target);
+    const tween = lookAt(this.#camera_, target, 'none');
     return tween;
   }
 

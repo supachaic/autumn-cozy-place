@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { gsap } from "gsap";
 
-export function lookAt(camera, target) {
+export function lookAt(camera, target, ease = "power2.inOut") {
     const tempCamera = camera.clone();
     tempCamera.lookAt(target);
     const targetQuaternion = tempCamera.quaternion.clone();
@@ -24,7 +24,7 @@ export function lookAt(camera, target) {
     const tween = gsap.to(state, {
       t: 1,
       duration: duration,
-      ease: "power2.inOut",
+      ease: ease,
       onUpdate: () => {
         camera.quaternion.slerp(targetQuaternion, state.t);
       },
