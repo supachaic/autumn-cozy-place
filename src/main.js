@@ -129,6 +129,7 @@ class GrassProject extends App {
   #hasCoffeeCup_ = false;
 
   #menuBoardTexture_ = null;
+  #signageTexture_ = null;
 
   constructor() {
     super();
@@ -213,6 +214,10 @@ class GrassProject extends App {
     this.#menuBoardTexture_ = await this.loadTexture('/resources/textures/menu-board.png');
     this.#menuBoardTexture_.encoding = THREE.sRGBEncoding;
     this.#menuBoardTexture_.flipY = false;
+
+    this.#signageTexture_ = await this.loadTexture('/resources/textures/signage.png');
+    this.#signageTexture_.encoding = THREE.sRGBEncoding;
+    this.#signageTexture_.flipY = true;
   }
 
   async #sceneModel_(gui) {
@@ -275,6 +280,27 @@ class GrassProject extends App {
     });
     menuBoard.material = newMat;
     this.Scene.add(menuBoard);
+
+    // signage
+    const signageScene = gltf.scene.getObjectByName('signage-board');
+    const signageGeometry = new THREE.PlaneGeometry(0.429, 0.585);
+    const signageMat = new THREE.MeshBasicMaterial({
+      map: this.#signageTexture_,
+      transparent: false,
+    });
+    const signage = new THREE.Mesh(signageGeometry, signageMat);
+    signage.position.copy(signageScene.position);
+    signage.position.z += 0.01;  // slight offset to avoid z-fighting
+    signage.rotation.copy(signageScene.rotation);
+    signage.rotateY(Math.PI / 2);
+    signage.rotateX(THREE.MathUtils.degToRad(-18.2));
+    this.Scene.add(signage);
+
+    // gui to rotate signage for debug 
+    const folder = gui.addFolder('Signage Board');
+    folder.add(signage.rotation, 'x', 0, Math.PI * 2, 0.001).name('Rot X');
+    folder.add(signage.rotation, 'y', 0, Math.PI * 2, 0.001).name('Rot Y');
+    folder.add(signage.rotation, 'z', 0, Math.PI * 2, 0.001).name('Rot Z');
   }
 
   async #createFoliageInstanced_(model, density) {
