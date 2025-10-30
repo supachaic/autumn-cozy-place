@@ -31,7 +31,7 @@ class App {
   #cameraStart_ = new THREE.Vector3(13.0, 1.5, 13.0);
   // #cameraStartLookAt_ = new THREE.Vector3(13.0, 1.5, 13.0);
   #cameraLookTarget_ = new THREE.Vector3(0, 2, 0);
-  #controlsMethod_ = 'pointer-lock'; // 'orbit' or 'pointer-lock'
+  #controlsMethod_ = null; // 'orbit' or 'pointer-lock'
 
   constructor() {
   }
@@ -165,27 +165,7 @@ class App {
     // this.#debugUI_.add(this.#camera_.quaternion, 'w', -1, 1, 0.01).name('Camera QW');
 
     // Setup controls
-    if (this.#controlsMethod_ === 'orbit') {
-      this.#controls_ = new OrbitControls(this.#camera_, this.#threejs_.domElement);
-      this.#controls_.target.copy(this.#cameraLookTarget_);
-      this.#controls_.enableDamping = true;
-      this.#controls_.dampingFactor = 0.05;
-      this.#controls_.enablePan = false;
-      this.#controls_.minDistance = 2;
-      this.#controls_.maxDistance = 50;
-      // this.#controls_.maxPolarAngle = Math.PI / 2 - 0.1; // prevent going below ground
-
-    } else if (this.#controlsMethod_ === 'pointer-lock') {
-      this.#controls_ = new PointerLockControls(this.#camera_, this.#threejs_.domElement);
-      
-      this.#controls_.addEventListener('lock', () => {
-        this.#tl_.to('#menu-bar', { autoAlpha: 0, duration: 0.5, ease: 'power1.out' });
-      });
-      
-      this.#controls_.addEventListener('unlock', () => {
-        this.#tl_.to('#menu-bar', { autoAlpha: 1, duration: 0.5, ease: 'power1.out', delay: 1.0 });
-      });
-    }
+    this.switchControlsMethod( 'pointer-lock' );
 
     this.#scene_ = new THREE.Scene();
     this.#scene_.background = new THREE.Color(0x000000);
@@ -254,7 +234,7 @@ class App {
   }
 
   #step_(timeElapsed) {
-    this.#controls_.update(timeElapsed);
+    this.#controls_?.update(timeElapsed);
     this.onStep(timeElapsed, this.#clock_.getElapsedTime());
   }
 
@@ -269,6 +249,45 @@ class App {
 
   addToScene(object) {
     this.#scene_.add(object);
+  }
+
+  switchControlsMethod(method) {
+    if (this.#controlsMethod_ === method) {
+      return;
+    }
+
+    if (this.#controls_) {
+      this.#controls_.dispose();
+    } 
+
+    this.#controlsMethod_ = method;
+
+    // Setup controls
+    if (method === 'orbit') {
+      this.#controls_ = new OrbitControls(this.#camera_, this.#threejs_.domElement);
+      this.#controls_.target.copy(this.#cameraLookTarget_);
+      this.#controls_.enableDamping = true;
+      this.#controls_.dampingFactor = 0.05;
+      this.#controls_.enablePan = true;
+      this.#controls_.minDistance = 2;
+      this.#controls_.maxDistance = 50;
+      this.#controls_.maxPolarAngle = Math.PI / 2 + 0.1; // prevent going below ground
+    } else if (method === 'pointer-lock') {
+      this.#controls_ = new PointerLockControls(this.#camera_, this.#threejs_.domElement);
+      this.#controls_.addEventListener('lock', () => {
+        this.#tl_
+          .to('#menu-bar', { autoAlpha: 0, duration: 0.5, ease: 'power1.out' })
+          .set('#bottom-message-text', { innerText: 'Move your mouse to look around or click to exit.' })
+          .fromTo('#bottom-message', {y: "10%", autoAlpha: 0, display: 'none'}, { y: "0%", autoAlpha: 1.0, duration: 0.5, pointerEvents: 'none', display: 'flex', ease: 'power2.inOut' }, '<')
+          .to('#bottom-message', { autoAlpha: 0, duration: 0.5, display: 'none', ease: 'power2.inOut', delay: 3.0 });
+      });
+      this.#controls_.addEventListener('unlock', () => {
+        this.#tl_
+          .to('#menu-bar', { autoAlpha: 1, duration: 0.5, ease: 'power1.out', delay: 1.0 })
+          
+
+      });
+    }
   }
 
   async loadTexture(path, srgb=true) {
@@ -347,6 +366,7 @@ class App {
   get Resolution() { return this.#resolution_; }
   get Timeline() { return this.#tl_; }
   get CameraLookTarget() { return this.#cameraLookTarget_; }
+  get ControlsMethod() { return this.#controlsMethod_;  }
 }
 
 export { App };

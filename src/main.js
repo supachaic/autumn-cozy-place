@@ -32,6 +32,8 @@ class GrassProject extends App {
     'btn-info',
     'btn-close-info',
     'btn-camera-360',
+    'btn-orbit-mode',
+    'btn-exit-orbit',
 
     // coffee menu
     'menu-latte',
@@ -51,6 +53,7 @@ class GrassProject extends App {
     red: './resources/audio/wave-of-you-relaxing-lofi-305565.mp3',
   }
 
+  #grassBladeCount_ = 60000 * 15;
   #grassBladeGeometry_ = null;
   #grassMaterial_ = null;
   #groundWidth_ = 30;
@@ -130,6 +133,9 @@ class GrassProject extends App {
 
   #menuBoardTexture_ = null;
   #signageTexture_ = null;
+
+  #lastCameraPosition_ = new THREE.Vector3();
+  #lastCameraLookAt_ = new THREE.Vector3();
 
   constructor() {
     super();
@@ -616,7 +622,7 @@ class GrassProject extends App {
     geometry.attributes.uv = this.#grassBladeGeometry_.attributes.uv;
     geometry.attributes.normal = this.#grassBladeGeometry_.attributes.normal;
 
-    const instanceCount = 60000 * 10;
+    const instanceCount = this.#grassBladeCount_;
 
     const offsets = [];
     const stretches = [];
@@ -882,7 +888,7 @@ class GrassProject extends App {
 
   registerBodyEvent() {
     document.body.addEventListener('click', () => {
-      if (this.Controls.isLocked) {
+      if (this.ControlsMethod === 'pointer-lock' && this.Controls.isLocked) {
         this.Controls.unlock();
         
         let target = this.CameraLookTarget;
@@ -933,7 +939,7 @@ class GrassProject extends App {
   }
 
   #onTheMove_(moveTo, lookAt=new THREE.Vector3(0, 2, 0)) {
-    if (this.#currentPoint_ === moveTo) return;
+    if (this.#currentPoint_ === moveTo || this.ControlsMethod !== 'pointer-lock') return;
 
     this.Controls.enabled = false;
 
@@ -1098,7 +1104,44 @@ class GrassProject extends App {
   }
 
   #onCamera360ButtonClick_() {
+    if (this.ControlsMethod === 'orbit') return;
+
     this.Controls.lock();
+  }
+
+  #onOrbitButtonClick_() {
+    if (this.ControlsMethod === 'orbit') return;
+
+    this.#lastCameraPosition_ = this.Camera.position.clone();
+    this.#lastCameraLookAt_ = this.CameraLookTarget.clone();
+
+    this.Timeline
+      .to('#menu-bar', { y: "10%", opacity: 0, pointerEvents: 'none', display: 'none', duration: 0.5, ease: 'power2.inOut', onComplete: () => {
+        this.switchControlsMethod('orbit');
+      }})
+      .set('#bottom-message-text', { innerText: 'Enter Orbit Mode' })
+      .fromTo('#bottom-message', {y: "10%", autoAlpha: 0, display: 'none'}, { y: "0%", autoAlpha: 1.0, duration: 0.5, pointerEvents: 'none', display: 'flex', ease: 'power2.inOut' }, '<')
+      .to('#btn-exit-orbit', { autoAlpha: 1.0, duration: 0.5, pointerEvents: 'auto', display: 'block', ease: 'power2.inOut' }, '-=0.3')
+      .to('#bottom-message', { autoAlpha: 0, duration: 0.5, display: 'none', ease: 'power2.inOut', delay: 3.0 }) 
+  }
+
+  #onExitOrbitButtonClick_() {
+    if (this.ControlsMethod !== 'orbit') return;
+
+    this.Timeline
+      .to(this.Camera.position, {
+        x: this.#lastCameraPosition_.x,
+        y: this.#lastCameraPosition_.y,
+        z: this.#lastCameraPosition_.z,
+        duration: 1.5,
+        ease: 'power2.inOut',
+        onComplete: () => {
+          this.cameraLookAt(this.#lastCameraLookAt_).play();
+          this.switchControlsMethod('pointer-lock');
+        }
+      })
+      .to('#btn-exit-orbit', { autoAlpha: 0.0, duration: 0.5, pointerEvents: 'none', display: 'none', ease: 'power2.inOut' }, '-=1.0')
+      .to('#menu-bar', { y: "0%", opacity: 1, pointerEvents: 'auto', display: 'flex', duration: 0.5, ease: 'power2.inOut', delay: 0.5 });
   }
 
   #onUiButtonClick_(id) {
@@ -1137,6 +1180,12 @@ class GrassProject extends App {
         break;
       case 'btn-close-info':
         this.#onCloseInfoButtonClick_();
+        break;
+      case 'btn-orbit-mode':
+        this.#onOrbitButtonClick_();
+        break;
+      case 'btn-exit-orbit':
+        this.#onExitOrbitButtonClick_();
         break;
       default: break;
     }
