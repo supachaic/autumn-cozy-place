@@ -182,11 +182,11 @@ class GrassProject extends App {
 
     // add sun light
     const sunLight = new THREE.DirectionalLight(0xffffff, 1);
-    sunLight.position.set(5, 10, 5);
+    sunLight.position.set(12, 10, 5);
     sunLight.castShadow = true;
     sunLight.shadow.radius = 3;
-    sunLight.shadow.mapSize.width = 512;
-    sunLight.shadow.mapSize.height = 512;
+    sunLight.shadow.mapSize.width = 1024;
+    sunLight.shadow.mapSize.height = 1024;
     sunLight.shadow.camera.near = 1;
     sunLight.shadow.camera.far = 100;
     sunLight.shadow.camera.left = -30;
@@ -194,6 +194,8 @@ class GrassProject extends App {
     sunLight.shadow.camera.top = 30;
     sunLight.shadow.camera.bottom = -30;
     sunLight.shadow.bias = -0.01;
+    sunLight.shadow.normalBias = 0.05;
+    // sunLight.shadow.camera.updateProjectionMatrix();
     this.Scene.add(sunLight);
   }
 
@@ -592,7 +594,34 @@ class GrassProject extends App {
       wireframe: false,
     })
 
+    const injectDisplacement = (shader) => {
+      shader.uniforms.uNoiseTexture = { value: this.#noiseGroundHeightTexture_ };
+      shader.uniforms.uTextureRepeat = { value: this.#groundRepeat_ };
+
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <uv_vertex>', '#include <uv_vertex>\n')
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+          float height = texture2D(uNoiseTexture, vUv).r - 0.5;
+          height *= 2.0;
+          height += 0.5;
+          transformed.y += height * 1.2;
+          `
+        );
+    };
+
+    const groundDepthMaterial = new THREE.MeshDepthMaterial({
+      depthPacking: THREE.RGBADepthPacking,
+    });
+    groundDepthMaterial.onBeforeCompile = injectDisplacement;
+
+    const groundDistanceMaterial = new THREE.MeshDistanceMaterial();
+    groundDistanceMaterial.onBeforeCompile = injectDisplacement;
+
     const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
+    groundMesh.customDepthMaterial = groundDepthMaterial;
+    groundMesh.customDistanceMaterial = groundDistanceMaterial;
     groundMesh.castShadow = false;
     groundMesh.receiveShadow = true;
     this.Scene.add(groundMesh);
