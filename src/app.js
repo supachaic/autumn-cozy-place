@@ -258,7 +258,7 @@ class App {
       this.#controls_.enablePan = true;
       this.#controls_.minDistance = 2;
       this.#controls_.maxDistance = 50;
-      // this.#controls_.maxPolarAngle = Math.PI / 2 + 0.1; // prevent going below ground
+      this.#controls_.maxPolarAngle = Math.PI / 2 + 0.1; // prevent going below ground
     } else if (method === 'pointer-lock') {
       this.#controls_ = new PointerLockControls(this.#camera_, this.#threejs_.domElement);
       this.#controls_.addEventListener('lock', () => {
