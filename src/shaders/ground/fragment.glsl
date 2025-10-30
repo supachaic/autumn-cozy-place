@@ -16,10 +16,13 @@ void main() {
   float grassMix = step(grassThreshold, vPosition.y);
   vec3 grassColor = mix(uGrassColor1, uGrassColor2, vTone);
   color = mix(color, grassColor, grassMix);
+  
+  // set color darker for ground below grass
+  color *= 0.7;
 
   // Ground
-  float groundThreshold = -0.25;
-  float groundMix = smoothstep(0.05, groundThreshold, vPosition.y);
+  float groundThreshold = -0.3;
+  float groundMix = smoothstep(0.02, groundThreshold, vPosition.y);
   vec3 groundColor = mix(uGroundColor1, uGroundColor2, vTone);
   color = mix(color, groundColor, groundMix);
 

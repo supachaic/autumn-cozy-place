@@ -29,7 +29,6 @@ class App {
   #tl_ = null;
 
   #cameraStart_ = new THREE.Vector3(13.0, 1.5, 13.0);
-  // #cameraStartLookAt_ = new THREE.Vector3(13.0, 1.5, 13.0);
   #cameraLookTarget_ = new THREE.Vector3(0, 2, 0);
   #controlsMethod_ = null; // 'orbit' or 'pointer-lock'
 
@@ -148,21 +147,9 @@ class App {
     const near = 0.1;
     const far = 1000;
     this.#camera_ = new THREE.PerspectiveCamera(fov, aspect, near, far);
-    // this.#camera_.position.set(11.5, 1.5, 4);
     this.#camera_.position.copy(this.#cameraStart_);
     this.#camera_.lookAt(this.#cameraLookTarget_);
     this.#camera_.updateMatrixWorld();
-
-    // this.#debugUI_.add(this.#camera_.position, 'x', -100, 100, 0.01).name('Camera X');
-    // this.#debugUI_.add(this.#camera_.position, 'y', -100, 100, 0.01).name('Camera Y');
-    // this.#debugUI_.add(this.#camera_.position, 'z', -100, 100, 0.01).name('Camera Z');
-    // this.#debugUI_.add(this.#camera_, 'fov', 1, 180, 1).name('Camera FOV').onChange(() => {
-    //   this.#camera_.updateProjectionMatrix();
-    // });
-    // this.#debugUI_.add(this.#camera_.quaternion, 'x', -1, 1, 0.01).name('Camera QX');
-    // this.#debugUI_.add(this.#camera_.quaternion, 'y', -1, 1, 0.01).name('Camera QY');
-    // this.#debugUI_.add(this.#camera_.quaternion, 'z', -1, 1, 0.01).name('Camera QZ');
-    // this.#debugUI_.add(this.#camera_.quaternion, 'w', -1, 1, 0.01).name('Camera QW');
 
     // Setup controls
     this.switchControlsMethod( 'pointer-lock' );

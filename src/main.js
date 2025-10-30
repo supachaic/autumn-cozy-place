@@ -181,7 +181,7 @@ class GrassProject extends App {
     this.Scene.background = skybox;
 
     // add sun light
-    const sunLight = new THREE.DirectionalLight(0xffffff, 3);
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1);
     sunLight.position.set(5, 10, 5);
     sunLight.castShadow = true;
     sunLight.shadow.radius = 3;
