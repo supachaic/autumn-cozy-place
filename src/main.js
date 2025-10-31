@@ -986,6 +986,7 @@ class GrassProject extends App {
         this.#sound_.play();
         this.#sound_.fade(0, 0.5, 2000);
       }})
+      .to('#corner-menu', { autoAlpha: 1.0, display: 'flex', duration: 1.0, ease: 'power2.inOut' }, '<')
   }
 
   #findPath_(startId, endId) {
