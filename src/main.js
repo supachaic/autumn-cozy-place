@@ -968,6 +968,7 @@ class GrassProject extends App {
 
   #onBackPhotoFrameButtonClick_() {
     this.Timeline
+      .to('#photo-frame-outer', { y: '20%', opacity: 0, duration: 0.5, ease: 'power2.in' })
       .to('#photo-frame-hud', { autoAlpha: 0.0, duration: 0.5, ease: 'power2.out', display: 'none', onComplete: () => {
         const divEl = document.getElementById('photo-content');
         divEl.innerHTML = '';
