@@ -127,7 +127,10 @@ class App {
   }
 
   async #setupRenderer_() {
-    this.#threejs_ = new THREE.WebGLRenderer( { antialias: true } );
+    this.#threejs_ = new THREE.WebGLRenderer( { 
+      antialias: true,
+      preserveDrawingBuffer: true,
+    } );
     this.#threejs_.shadowMap.enabled = true;
     this.#threejs_.shadowMap.type = THREE.PCFSoftShadowMap;
     this.#threejs_.toneMapping = THREE.ACESFilmicToneMapping;
@@ -261,19 +264,6 @@ class App {
       this.#controls_.maxPolarAngle = Math.PI / 2 + 0.1; // prevent going below ground
     } else if (method === 'pointer-lock') {
       this.#controls_ = new PointerLockControls(this.#camera_, this.#threejs_.domElement);
-      this.#controls_.addEventListener('lock', () => {
-        this.#tl_
-          .to('#menu-bar', { autoAlpha: 0, duration: 0.5, ease: 'power1.out' })
-          .set('#bottom-message-text', { innerText: 'Move your mouse to look around or click to exit.' })
-          .fromTo('#bottom-message', {y: "10%", autoAlpha: 0, display: 'none'}, { y: "0%", autoAlpha: 1.0, duration: 0.5, pointerEvents: 'none', display: 'flex', ease: 'power2.inOut' }, '<')
-          .to('#bottom-message', { autoAlpha: 0, duration: 0.5, display: 'none', ease: 'power2.inOut', delay: 3.0 });
-      });
-      this.#controls_.addEventListener('unlock', () => {
-        this.#tl_
-          .to('#menu-bar', { autoAlpha: 1, duration: 0.5, ease: 'power1.out', delay: 1.0 })
-          
-
-      });
     }
   }
 

@@ -34,6 +34,7 @@ class GrassProject extends App {
     'btn-camera-360',
     'btn-orbit-mode',
     'btn-exit-orbit',
+    'btn-back-photo-frame',
 
     // coffee menu
     'menu-latte',
@@ -45,6 +46,7 @@ class GrassProject extends App {
   #enableAnimation_ = true;
   #sound_ = null;
   #soundMuted_ = false;
+  #cameraShutterSound_ = null;
   #debugWaypoint_ = false;
 
   #playlist_ = {
@@ -162,6 +164,13 @@ class GrassProject extends App {
       autoplay: false,
       loop: true,
       volume: 0,
+      muted: this.#soundMuted_,
+    });
+
+    this.#cameraShutterSound_ = new Howl({
+      src: ['./resources/audio/taking-a-polaroid-photo-100097.mp3'],
+      volume: 0.5,
+      autoplay: false,
       muted: this.#soundMuted_,
     });
   }
@@ -918,10 +927,21 @@ class GrassProject extends App {
   registerBodyEvent() {
     document.body.addEventListener('click', () => {
       if (this.ControlsMethod === 'pointer-lock' && this.Controls.isLocked) {
+        let dataUrl = null;
+        this.Timeline.pause();
         this.Controls.unlock();
+
+        this.Timeline
+          .to('#view-finder', { backgroundColor: '#000', duration: 0.3, ease: 'power2.out', display: 'block', onComplete: () => {
+            this.#cameraShutterSound_.play();
+            dataUrl = this.Renderer.domElement.toDataURL('image/png');
+            const divEl = document.getElementById('photo-content');
+            divEl.innerHTML = '';
+            divEl.style.backgroundImage = `url(${dataUrl})`;
+          }})
+          .to('#view-finder', { autoAlpha: 0.0, duration: 0.5, ease: 'power2.out', backgroundColor: 'transparent', display: 'none' })
         
         let target = this.CameraLookTarget;
-
         if (this.#currentPoint_ === 'key-kombi') {
           target = this.#objKombi_;
         } else if (this.#currentPoint_ === 'key-trash-bin') {
@@ -931,9 +951,29 @@ class GrassProject extends App {
         }
 
         const tween = this.cameraLookAt(target);
-        tween.play();
+        this.Timeline.add(tween);
+        this.Timeline
+          .to('#photo-frame-hud', {
+            autoAlpha: 1.0,
+            duration: 0.2,
+            ease: 'power2.out',
+            display: 'flex',
+          })
+          .fromTo('#photo-frame-outer', { scale: 1.2, y: '10%', opacity: 0 }, { scale: 1.0, y: '0%', rotation: -4.5, opacity: 1.0, duration: 0.5, ease: 'power2.out' }, '<');
+        
+        this.Timeline.play();
       }
     });
+  }
+
+  #onBackPhotoFrameButtonClick_() {
+    this.Timeline
+      .to('#photo-frame-hud', { autoAlpha: 0.0, duration: 0.5, ease: 'power2.out', display: 'none', onComplete: () => {
+        const divEl = document.getElementById('photo-content');
+        divEl.innerHTML = '';
+        divEl.style.backgroundImage = '';
+      }})
+      .to('#menu-bar', { autoAlpha: 1, duration: 0.5, ease: 'power1.out', delay: 1.0 });
   }
 
   #onAssetLoaded_() {
@@ -1135,7 +1175,15 @@ class GrassProject extends App {
   #onCamera360ButtonClick_() {
     if (this.ControlsMethod === 'orbit') return;
 
-    this.Controls.lock();
+    this.Timeline
+      .to('#menu-bar', { autoAlpha: 0, duration: 0.5, ease: 'power1.out' })
+      .to('#view-finder', { autoAlpha: 1.0, duration: 0.5, display: 'block', ease: 'power2.out' }, '<')
+      .set('#bottom-message-text', { innerText: 'Move your mouse to look around and click to take a shot.' })
+      .fromTo('#bottom-message', {y: "10%", autoAlpha: 0, display: 'none'}, { y: "0%", autoAlpha: 1.0, duration: 0.5, pointerEvents: 'none', display: 'flex', ease: 'power2.inOut', onComplete: () => {
+        this.Controls.lock();
+      } }, '<')
+      .to('#bottom-message', { autoAlpha: 0, duration: 0.5, display: 'none', ease: 'power2.inOut', delay: 3.0});
+
   }
 
   #onOrbitButtonClick_() {
@@ -1216,6 +1264,9 @@ class GrassProject extends App {
       case 'btn-exit-orbit':
         this.#onExitOrbitButtonClick_();
         break;
+      case 'btn-back-photo-frame':
+        this.#onBackPhotoFrameButtonClick_();
+        break;
       default: break;
     }
   }
@@ -1250,4 +1301,5 @@ window.addEventListener('DOMContentLoaded', async () => {
   APP_.registerCoverEvent();
   APP_.registerUiEvents();
   APP_.registerBodyEvent();
+  // APP_.registerControlsUnlockEvent();
 });
